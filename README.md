@@ -256,6 +256,7 @@ Local test execution will crash a Raspberry Pi or similar low-memory device. Run
 ```python
 # In a Databricks notebook:
 # %pip install insurance-fairness pytest
+# (In Databricks notebooks use %pip; outside Databricks: uv add insurance-fairness)
 
 # !pytest /path/to/insurance_fairness/tests/ -v
 ```
