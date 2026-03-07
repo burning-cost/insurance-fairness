@@ -25,12 +25,6 @@ Every Python fairness library was built for binary classification or generic reg
 uv add insurance-fairness
 ```
 
-Or with pip:
-
-```bash
-pip install insurance-fairness
-```
-
 **Dependencies:** polars, catboost, scikit-learn, scipy, numpy, jinja2, pyarrow
 
 ## Quick Start
