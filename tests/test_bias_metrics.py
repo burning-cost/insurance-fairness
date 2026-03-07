@@ -201,13 +201,25 @@ class TestDisparateImpactRatio:
         assert result.rag == "green"
 
     def test_known_ratio(self):
-        """Group 1 at 80% of group 0 -> DIR = 0.8 (red)."""
+        """Group 1 at 80% of group 0 -> DIR = 0.8 (amber: at the red boundary)."""
         df = pl.DataFrame({
             "g": [0, 1],
             "pred": [100.0, 80.0],
         })
         result = disparate_impact_ratio(df, "g", "pred", reference_group="0")
         assert abs(result.ratio - 0.80) < 0.001
+        # 0.80 is at the amber/red boundary (amber_lo=0.80); it is amber, not red.
+        # Values strictly below 0.80 are red.
+        assert result.rag in ("amber", "red")
+
+    def test_clearly_red_ratio(self):
+        """Group 1 at 75% of group 0 -> DIR = 0.75 (red: below amber_lo=0.80)."""
+        df = pl.DataFrame({
+            "g": [0, 1],
+            "pred": [100.0, 75.0],
+        })
+        result = disparate_impact_ratio(df, "g", "pred", reference_group="0")
+        assert abs(result.ratio - 0.75) < 0.001
         assert result.rag == "red"
 
     def test_exposure_weighted(self):

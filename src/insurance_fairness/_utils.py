@@ -120,14 +120,23 @@ def assign_prediction_deciles(
     Decile boundaries are based on the prediction values, not exposure-weighted
     quantiles. This matches common actuarial practice (order by predicted
     frequency or pure premium, split into bands).
+
+    When all predictions are identical, all policies are placed in decile 1.
     """
     validate_columns(df, prediction_col)
+    pred = df[prediction_col].to_numpy()
+
+    # If all values are the same, put everything in decile 1
+    if np.all(pred == pred[0]):
+        return df.with_columns(
+            pl.Series("prediction_decile", np.ones(len(pred), dtype=np.int32))
+        )
+
     quantile_cuts = [i / n_deciles for i in range(1, n_deciles)]
     breaks = df[prediction_col].quantile(quantile_cuts, interpolation="nearest")
 
-    # Use cut with explicit breakpoints
-    pred = df[prediction_col].to_numpy()
-    breaks_arr = np.array(breaks)
+    # De-duplicate breaks to handle low-cardinality predictions
+    breaks_arr = np.unique(np.array(breaks))
     deciles = np.digitize(pred, breaks_arr) + 1  # 1-indexed
     deciles = np.clip(deciles, 1, n_deciles)
 
@@ -211,13 +220,15 @@ def bootstrap_ci(
 # "Green" means no material concern identified.
 
 DEFAULT_THRESHOLDS = {
-    # Disparate impact ratio: values outside [0.8, 1.25] are flagged.
-    # The US EEOC 4/5ths rule uses 0.8; the upper bound is the reciprocal.
-    # These are indicative only for UK use.
-    "disparate_impact_ratio": {"amber": (0.85, 1.18), "red": (0.80, 1.25)},
-    # Proxy R-squared: above 0.1 warrants investigation.
+    # Disparate impact ratio thresholds (ratio of lower group to higher group mean).
+    # Green:  DIR within [0.90, 1.11] (within roughly 10% of parity)
+    # Amber:  DIR within [0.80, 1.25] but outside green (10-25% disparity)
+    # Red:    DIR outside [0.80, 1.25] (greater than 25% disparity)
+    # These are indicative only for UK use and are not prescribed by the FCA.
+    "disparate_impact_ratio": {"green": (0.90, 1.11), "amber": (0.80, 1.25)},
+    # Proxy R-squared: above 0.05 warrants documentation.
     "proxy_r2": {"amber": 0.05, "red": 0.10},
-    # Calibration disparity: ratio of actual/expected by group.
+    # Calibration disparity: max absolute deviation of A/E from 1.0.
     # Greater than 10% deviation is amber; 20% is red.
     "calibration_disparity": {"amber": 0.10, "red": 0.20},
     # Demographic parity log-ratio (in log-space, so 0.1 ~ 10.5% price difference).
@@ -236,7 +247,7 @@ def rag_status(
     metric_name:
         One of the keys in DEFAULT_THRESHOLDS.
     value:
-        Metric value to evaluate. For ratio metrics, pass the absolute value.
+        Metric value to evaluate. For ratio metrics, pass the ratio value.
     thresholds:
         Override default thresholds. Must have the same structure as
         DEFAULT_THRESHOLDS[metric_name].
@@ -247,23 +258,25 @@ def rag_status(
 
     t = thresholds
 
-    # Ratio-type metrics with (lower, upper) tuple thresholds
+    # Ratio-type metrics with explicit green zone and amber zone
     if metric_name in ("disparate_impact_ratio",):
+        green_lo, green_hi = t["green"]
         amber_lo, amber_hi = t["amber"]
-        red_lo, red_hi = t["red"]
-        if value < red_lo or value > red_hi:
-            return "red"
+        # Red: outside amber zone
         if value < amber_lo or value > amber_hi:
+            return "red"
+        # Amber: inside amber zone but outside green zone
+        if value < green_lo or value > green_hi:
             return "amber"
         return "green"
 
     # Scalar thresholds (higher is worse)
     if metric_name in ("proxy_r2", "calibration_disparity", "demographic_parity_log_ratio"):
-        red_val = t["red"]
-        amber_val = t["amber"]
-        if value >= red_val:
+        red_val = t.get("red")
+        amber_val = t.get("amber")
+        if red_val is not None and value >= red_val:
             return "red"
-        if value >= amber_val:
+        if amber_val is not None and value >= amber_val:
             return "amber"
         return "green"
 

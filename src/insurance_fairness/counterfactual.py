@@ -213,7 +213,7 @@ def counterfactual_fairness(
 
     policy_impacts = pl.Series(
         "cf_impact_ratio",
-        (cf_preds / orig_preds).where(orig_preds > 0, float("nan")).tolist(),
+        np.where(orig_preds > 0, cf_preds / orig_preds, float("nan")).tolist(),
     )
 
     return CounterfactualResult(

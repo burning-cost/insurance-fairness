@@ -130,19 +130,32 @@ class TestDirectFlip:
 class TestLRTWMarginalise:
     def test_not_in_feature_cols_returns_original(self):
         """If protected col not in feature_cols, return original predictions."""
+
+        class SingleColModel:
+            """Mock model using only pred_factor (column index 0)."""
+            def predict(self, pool_or_df):
+                import pandas as pd  # noqa
+                if hasattr(pool_or_df, 'get_features'):
+                    X = pool_or_df.get_features()
+                else:
+                    X = pool_or_df
+                if hasattr(X, 'values'):
+                    X = X.values
+                return X[:, 0].astype(float)  # return pred_factor directly
+
         df = pl.DataFrame({
             "gender": [0, 1, 0],
-            "pred_factor": [100.0, 100.0, 100.0],
+            "pred_factor": [100.0, 150.0, 200.0],
         })
         preds = _lrtw_marginalise(
-            model=MockCatBoostModel(),
+            model=SingleColModel(),
             df=df,
             protected_col="gender",
             feature_cols=["pred_factor"],  # gender not in features
             n_monte_carlo=5,
         )
-        # Model only sees pred_factor; gender=0 always -> modifier=1.0
-        np.testing.assert_allclose(preds, [100.0, 100.0, 100.0], rtol=0.01)
+        # Model only sees pred_factor, which is unchanged; predictions are pred_factor values
+        np.testing.assert_allclose(preds, [100.0, 150.0, 200.0], rtol=0.01)
 
     def test_averaging_reduces_gender_effect(self):
         """

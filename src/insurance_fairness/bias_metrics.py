@@ -642,9 +642,10 @@ def gini_by_group(
         total_val = cum_vals[-1]
         if total_val == 0:
             return 0.0
-        # Trapezoidal approximation of the area under Lorenz curve
-        lorenz_x = cum_wts / total_wt
-        lorenz_y = cum_vals / total_val
+        # Trapezoidal approximation of the area under Lorenz curve.
+        # Prepend (0, 0) to the Lorenz curve so the integration starts from the origin.
+        lorenz_x = np.concatenate([[0.0], cum_wts / total_wt])
+        lorenz_y = np.concatenate([[0.0], cum_vals / total_val])
         area_under = float(np.trapz(lorenz_y, lorenz_x))
         return 1.0 - 2.0 * area_under
 
@@ -720,13 +721,15 @@ def theil_index(
     pred = df[prediction_col].to_numpy()
     exp = exposure.to_numpy()
 
-    # Exposure-weighted overall mean
-    overall_mean = float(np.average(pred, weights=exp))
-    if overall_mean <= 0:
+    # Check all predictions are strictly positive
+    if np.any(pred <= 0):
         raise ValueError(
             "Theil index requires strictly positive predictions. "
-            f"Exposure-weighted mean is {overall_mean}."
+            f"Minimum prediction found: {pred.min():.6f}."
         )
+
+    # Exposure-weighted overall mean
+    overall_mean = float(np.average(pred, weights=exp))
 
     # Overall Theil T: exposure-weighted
     ratios = pred / overall_mean

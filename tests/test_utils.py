@@ -175,9 +175,11 @@ class TestRagStatus:
         assert rag_status("disparate_impact_ratio", 1.0) == "green"
 
     def test_disparate_impact_amber(self):
+        # 0.87 is between amber_lo=0.80 and green_lo=0.90, so should be amber
         assert rag_status("disparate_impact_ratio", 0.87) == "amber"
 
     def test_disparate_impact_red(self):
+        # 0.79 is below amber_lo=0.80, so should be red
         assert rag_status("disparate_impact_ratio", 0.79) == "red"
 
     def test_proxy_r2_green(self):
