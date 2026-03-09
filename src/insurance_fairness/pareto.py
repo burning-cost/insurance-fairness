@@ -66,6 +66,12 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import polars as pl
 
+# np.trapz was removed in NumPy 2.0; np.trapezoid is the replacement.
+try:
+    _trapz = np.trapezoid
+except AttributeError:
+    _trapz = np.trapz
+
 
 # ---------------------------------------------------------------------------
 # Lazy import guard for pymoo
@@ -290,7 +296,7 @@ class FairnessProblem:
 
         lorenz_x = np.concatenate([[0.0], cum_exposure / total_exposure])
         lorenz_y = np.concatenate([[0.0], cum_actual / total_actual])
-        area_under = float(np.trapz(lorenz_y, lorenz_x))
+        area_under = float(_trapz(lorenz_y, lorenz_x))
         gini = 1.0 - 2.0 * area_under
 
         # Return negative (minimisation -> maximise Gini)
