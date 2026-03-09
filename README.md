@@ -12,7 +12,7 @@ The practical problem is well-documented. Citizens Advice (2022) found a £280/y
 
 Every Python fairness library was built for binary classification or generic regression. None handles the multiplicative frequency/severity structure, exposure-weighted metrics, or the log-link world that pricing actuaries actually work in. This library fills that gap for the UK market.
 
-**Blog post:** [Proxy Discrimination in Insurance Pricing: What the FCA Actually Requires](https://burning-cost.github.io/2025/11/10/proxy-discrimination-fca-insurance-pricing/) — the Lindholm-Richman-Tsanakas-Wüthrich framework explained, the Citizens Advice data in full, and what a defensible audit trail looks like.
+**Blog post:** [Your Pricing Model Might Be Discriminating](https://burning-cost.github.io/2026/03/07/your-pricing-model-might-be-discriminating/) — the Lindholm-Richman-Tsanakas-Wüthrich framework explained, the Citizens Advice data in full, and what a defensible audit trail looks like.
 
 ## What This Library Does
 
