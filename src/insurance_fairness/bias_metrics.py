@@ -646,7 +646,7 @@ def gini_by_group(
         # Prepend (0, 0) to the Lorenz curve so the integration starts from the origin.
         lorenz_x = np.concatenate([[0.0], cum_wts / total_wt])
         lorenz_y = np.concatenate([[0.0], cum_vals / total_val])
-        area_under = float(np.trapz(lorenz_y, lorenz_x))
+        area_under = float(np.trapezoid(lorenz_y, lorenz_x) if hasattr(np, "trapezoid") else np.trapz(lorenz_y, lorenz_x))
         return 1.0 - 2.0 * area_under
 
     groups = df[protected_col].unique().sort().to_list()
