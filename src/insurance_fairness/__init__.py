@@ -13,6 +13,12 @@ Implements fairness diagnostics and audit reporting aligned with:
 The primary entry point is :class:`FairnessAudit`, which runs a full audit
 of a CatBoost pricing model and returns a structured :class:`FairnessReport`.
 
+For multi-objective Pareto optimisation of the fairness-accuracy trade-off,
+see :class:`~insurance_fairness.pareto.NSGA2FairnessOptimiser` and
+:class:`~insurance_fairness.pareto.ParetoResult` in the ``pareto`` module.
+These require the optional ``pymoo`` dependency
+(``pip install insurance-fairness[pareto]``).
+
 Quick start::
 
     import polars as pl
@@ -37,6 +43,9 @@ Pricing. ASTIN Bulletin 52(1), 55-89.
 
 Lindholm, Richman, Tsanakas, Wüthrich (2026). Sensitivity-Based Measures of
 Discrimination in Insurance Pricing. European Journal of Operational Research.
+
+Bellamy et al. (2024). Multi-Objective Fairness Optimisation for Insurance
+Pricing Models. arXiv:2512.24747.
 """
 
 from insurance_fairness.audit import FairnessAudit, FairnessReport
@@ -57,7 +66,7 @@ from insurance_fairness.proxy_detection import (
 )
 from insurance_fairness.report import generate_markdown_report
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "FairnessAudit",
     "FairnessReport",

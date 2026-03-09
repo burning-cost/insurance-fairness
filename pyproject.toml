@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "insurance-fairness"
-version = "0.1.0"
+version = "0.2.0"
 description = "Proxy discrimination auditing for UK insurance pricing models. Implements FCA Consumer Duty and Equality Act 2010 compliance checks."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,9 +17,12 @@ keywords = [
     "FCA",
     "actuarial",
     "pricing",
+    "pareto",
+    "nsga2",
+    "multi-objective",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Financial and Insurance Industry",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -42,6 +45,16 @@ dependencies = [
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
+]
+pareto = [
+    "pymoo>=0.6.1",
+]
+plot = [
+    "matplotlib>=3.7.0",
+]
+all = [
+    "pymoo>=0.6.1",
+    "matplotlib>=3.7.0",
 ]
 
 [project.urls]

@@ -25,6 +25,22 @@ Typical usage::
     report.summary()
     report.to_markdown("audit_2024.md")
 
+To run Pareto front analysis (requires ``pymoo``), pass a dict of alternative
+models and set ``run_pareto=True``::
+
+    audit = FairnessAudit(
+        model=catboost_model,
+        data=df,
+        protected_cols=["gender"],
+        prediction_col="predicted_premium",
+        outcome_col="claim_amount",
+        exposure_col="exposure",
+        pareto_models={"base": model_a, "fair": model_b},
+        run_pareto=True,
+    )
+    report = audit.run()
+    print(report.pareto_result.summary())
+
 The output FairnessReport is a structured dataclass. All constituent metric
 objects are accessible for custom analysis. The to_markdown() and to_dict()
 methods provide audit-ready outputs.
@@ -48,7 +64,7 @@ from __future__ import annotations
 
 import datetime
 from dataclasses import dataclass, field
-from typing import Sequence
+from typing import Any, Dict, Optional, Sequence
 
 import polars as pl
 
@@ -115,6 +131,9 @@ class FairnessReport:
         across any protected characteristic.
     overall_rag:
         Overall traffic-light status: 'green', 'amber', or 'red'.
+    pareto_result:
+        Pareto front result from NSGA-II, if run_pareto=True was set on
+        FairnessAudit. None if Pareto optimisation was not run.
     """
 
     model_name: str
@@ -126,6 +145,7 @@ class FairnessReport:
     results: dict[str, ProtectedCharacteristicReport]
     flagged_factors: list[str] = field(default_factory=list)
     overall_rag: str = "unknown"
+    pareto_result: Any = None  # ParetoResult | None, typed as Any to avoid hard import
 
     def summary(self) -> None:
         """Print a plain-text summary of the audit."""
@@ -189,6 +209,14 @@ class FairnessReport:
                 lines.append(f"  - {f}")
         else:
             lines.append("\nNo rating factors flagged with proxy concerns.")
+
+        if self.pareto_result is not None:
+            lines.append("\nPareto front analysis:")
+            lines.append(f"  Solutions on front: {self.pareto_result.n_solutions}")
+            idx = self.pareto_result.selected_point()
+            lines.append(
+                f"  TOPSIS-selected solution (equal weights): index {idx}"
+            )
 
         return "\n".join(lines)
 
@@ -265,6 +293,9 @@ class FairnessReport:
 
             output["results"][pc] = pc_dict
 
+        if self.pareto_result is not None:
+            output["pareto"] = self.pareto_result.to_dict()
+
         return output
 
 
@@ -319,6 +350,22 @@ class FairnessAudit:
         Set to 0 to skip (faster).
     proxy_catboost_iterations:
         CatBoost iterations for proxy R-squared computation.
+    run_pareto:
+        If True, run NSGA-II multi-objective Pareto optimisation and attach
+        the result to FairnessReport.pareto_result. Requires ``pymoo`` to
+        be installed (``pip install insurance-fairness[pareto]``).
+        Only meaningful when *pareto_models* contains two or more models.
+    pareto_models:
+        Dict mapping model name to fitted model. Required when run_pareto=True.
+        Should contain at least two models representing different positions
+        on the accuracy/fairness trade-off (e.g. standard model + fairness-
+        constrained model).
+    pareto_pop_size:
+        NSGA-II population size. Default 50 is adequate for 2-3 model ensembles.
+    pareto_n_gen:
+        NSGA-II number of generations. Default 100.
+    pareto_seed:
+        NSGA-II random seed. Default 42.
     """
 
     def __init__(
@@ -337,6 +384,11 @@ class FairnessAudit:
         n_calibration_deciles: int = 10,
         n_bootstrap: int = 0,
         proxy_catboost_iterations: int = 100,
+        run_pareto: bool = False,
+        pareto_models: Optional[Dict[str, Any]] = None,
+        pareto_pop_size: int = 50,
+        pareto_n_gen: int = 100,
+        pareto_seed: int = 42,
     ) -> None:
         from insurance_fairness._utils import to_polars  # noqa: PLC0415
 
@@ -353,6 +405,11 @@ class FairnessAudit:
         self.n_calibration_deciles = n_calibration_deciles
         self.n_bootstrap = n_bootstrap
         self.proxy_catboost_iterations = proxy_catboost_iterations
+        self.run_pareto = run_pareto
+        self.pareto_models = pareto_models or {}
+        self.pareto_pop_size = pareto_pop_size
+        self.pareto_n_gen = pareto_n_gen
+        self.pareto_seed = pareto_seed
 
         # Validate required columns
         required = [prediction_col, outcome_col] + self.protected_cols
@@ -376,6 +433,10 @@ class FairnessAudit:
         This runs all enabled checks for each protected characteristic, then
         assembles the results into a structured report with an overall RAG
         status.
+
+        If run_pareto=True, also runs NSGA-II Pareto optimisation and attaches
+        the result to FairnessReport.pareto_result. This requires pymoo to be
+        installed and pareto_models to contain at least two models.
         """
         from insurance_fairness._utils import resolve_exposure  # noqa: PLC0415
 
@@ -485,6 +546,11 @@ class FairnessAudit:
         rag_priority = {"red": 2, "amber": 1, "green": 0, "unknown": -1}
         overall_rag = max(rag_values, key=lambda r: rag_priority.get(r, -1), default="green")
 
+        # --- Optional Pareto front analysis ---
+        pareto_result = None
+        if self.run_pareto:
+            pareto_result = self._run_pareto_analysis(exposure.to_numpy())
+
         return FairnessReport(
             model_name=self.model_name,
             audit_date=audit_date,
@@ -495,4 +561,52 @@ class FairnessAudit:
             results=results,
             flagged_factors=sorted(all_flagged),
             overall_rag=overall_rag,
+            pareto_result=pareto_result,
         )
+
+    def _run_pareto_analysis(self, exposure_arr: "np.ndarray") -> Any:
+        """
+        Run NSGA-II Pareto optimisation over pareto_models.
+
+        Returns ParetoResult or None if optimisation fails.
+        """
+        import numpy as np  # noqa: PLC0415
+
+        from insurance_fairness.pareto import NSGA2FairnessOptimiser  # noqa: PLC0415
+
+        if len(self.pareto_models) < 1:
+            print(
+                "Warning: run_pareto=True but pareto_models is empty. "
+                "Pareto analysis skipped."
+            )
+            return None
+
+        if len(self.pareto_models) < 2:
+            print(
+                "Warning: run_pareto=True but only one model in pareto_models. "
+                "Pareto analysis requires at least two models for meaningful "
+                "trade-off exploration. Running with single model."
+            )
+
+        y = self.data[self.outcome_col].to_numpy().astype(float)
+
+        # Use the first protected characteristic for the Pareto objectives
+        pc = self.protected_cols[0]
+
+        try:
+            optimiser = NSGA2FairnessOptimiser(
+                models=self.pareto_models,
+                X=self.data,
+                y=y,
+                exposure=exposure_arr,
+                protected_col=pc,
+                prediction_col=self.prediction_col,
+            )
+            return optimiser.run(
+                pop_size=self.pareto_pop_size,
+                n_gen=self.pareto_n_gen,
+                seed=self.pareto_seed,
+            )
+        except Exception as exc:
+            print(f"Warning: Pareto analysis failed: {exc}")
+            return None
