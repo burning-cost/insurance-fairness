@@ -271,6 +271,21 @@ Or via the Databricks Jobs API. See the `notebooks/fairness_audit_demo.py` for a
 
 ---
 
+---
+
+## Capabilities Demo
+
+Demonstrated on synthetic UK motor data (50,000 policies) with a known fairness issue: postcode correlates with an ethnicity proxy, replicating the Citizens Advice (2022) finding. Full notebook: `notebooks/fairness_audit_demo.py`.
+
+- Proxy detection using mutual information, CatBoost proxy R-squared, SHAP proxy scores, and partial correlations — identifies which rating factors carry indirect protected-characteristic information
+- Exposure-weighted fairness metrics: calibration by group, demographic parity ratio in log-space, disparate impact ratio, Gini by group, Theil index — all computed correctly for a multiplicative pricing model
+- Counterfactual fairness test: flips postcode/proxy values and measures premium impact on the same underlying risk
+- Structured Markdown audit report with explicit FCA Consumer Duty (PRIN 2A) and Equality Act 2010 Section 19 regulatory mapping, suitable for pricing committee packs and FCA file reviews
+- Pareto optimisation notebook demonstrates the fairness-accuracy trade-off curve: how much predictive performance is lost at each level of fairness constraint
+
+**When to use:** Before any model goes to production pricing, and at regular intervals thereafter. The FCA's 2024 multi-firm review found most insurers were auditing inadequately. An audit that cannot answer "does this factor act as an ethnicity proxy?" is not sufficient under Consumer Duty.
+
+
 ## Other Burning Cost libraries
 
 **Model building**
