@@ -6,6 +6,9 @@ Shared fixtures for insurance-fairness tests.
 All synthetic data is generated here. No external datasets are required.
 The data is designed to have known statistical properties that allow tests
 to verify metric values against analytical expectations.
+
+Also includes fixtures and helpers for the diagnostics subpackage tests
+(originally from insurance-fairness-diag).
 """
 
 from __future__ import annotations
@@ -13,10 +16,11 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 import pytest
+from sklearn.linear_model import Ridge
 
 
 # ---------------------------------------------------------------------------
-# Synthetic dataset with known properties
+# Synthetic dataset with known properties (core fairness tests)
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="session")
@@ -191,21 +195,12 @@ def proxy_test_df(rng) -> pl.DataFrame:
         "claim_amount": claims.tolist(),
         "exposure": exposure.tolist(),
     })
-"""
-Shared fixtures for insurance-fairness-diag tests.
 
-Generates synthetic insurance datasets with known proxy discrimination
-structure so that tests have analytical ground truth.
-"""
 
-from __future__ import annotations
-
-import numpy as np
-import polars as pl
-import pytest
-from sklearn.linear_model import Ridge
-from sklearn.preprocessing import LabelEncoder
-
+# ---------------------------------------------------------------------------
+# Fixtures and helpers for diagnostics subpackage tests
+# (absorbed from insurance-fairness-diag)
+# ---------------------------------------------------------------------------
 
 def make_synthetic_dataset(
     n: int = 2000,
@@ -245,18 +240,18 @@ def make_synthetic_dataset(
       h is the fitted premium array
       model is the fitted sklearn Ridge model
     """
-    rng = np.random.default_rng(random_state)
+    rng_d = np.random.default_rng(random_state)
 
     # Sensitive attribute: binary postcode_area (0 = North, 1 = South)
-    postcode = rng.integers(0, 2, size=n).astype(float)
+    postcode = rng_d.integers(0, 2, size=n).astype(float)
 
     # Legitimate factors
-    age_band = rng.integers(0, 5, size=n).astype(float)
-    vehicle_group = rng.integers(0, 5, size=n).astype(float)
-    ncd_years = rng.integers(0, 5, size=n).astype(float)
+    age_band = rng_d.integers(0, 5, size=n).astype(float)
+    vehicle_group = rng_d.integers(0, 5, size=n).astype(float)
+    ncd_years = rng_d.integers(0, 5, size=n).astype(float)
 
     # Proxy feature: correlated with postcode but not identical
-    noise = rng.normal(0, 1, size=n)
+    noise = rng_d.normal(0, 1, size=n)
     proxy_feature = proxy_strength * postcode + np.sqrt(1 - proxy_strength**2) * noise
     # Discretise to 5 bands
     proxy_feature = np.clip(
@@ -268,7 +263,7 @@ def make_synthetic_dataset(
     true_price = 200.0 + 50.0 * age_band + 30.0 * vehicle_group + 20.0 * ncd_years
 
     # Observed claims with noise
-    y = true_price + rng.normal(0, 50, size=n)
+    y = true_price + rng_d.normal(0, 50, size=n)
 
     # Feature matrix for model: does NOT include postcode_area, but includes proxy_feature
     X_model = np.column_stack([age_band, vehicle_group, ncd_years, proxy_feature])
