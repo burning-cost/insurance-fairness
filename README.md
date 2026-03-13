@@ -36,16 +36,54 @@ pip install insurance-fairness
 ## Quick Start
 
 ```python
+import numpy as np
 import polars as pl
+from catboost import CatBoostRegressor
 from insurance_fairness import FairnessAudit
 
-# Your policy-level dataset
-df = pl.read_parquet("motor_portfolio.parquet")
+# Synthetic UK motor portfolio — 1,000 policies
+rng = np.random.default_rng(42)
+n = 1_000
 
-# Fitted CatBoost model
-from catboost import CatBoostRegressor
-model = CatBoostRegressor()
-model.load_model("frequency_model.cbm")
+# Protected characteristic: gender (binary)
+gender       = rng.choice(["M", "F"], size=n)
+vehicle_age  = rng.integers(1, 15, n).astype(float)
+driver_age   = rng.integers(21, 75, n).astype(float)
+ncd_years    = rng.integers(0, 9, n).astype(float)
+vehicle_group = rng.choice(["A", "B", "C", "D"], size=n)
+postcode_district = rng.choice(["SW1", "E1", "M1", "B1", "LS1"], size=n)
+exposure     = rng.uniform(0.3, 1.0, n)
+
+# Claim amount: slight gender correlation via vehicle_age proxy
+claim_amount = np.exp(
+    4.5
+    + 0.05 * vehicle_age
+    - 0.01 * ncd_years
+    + 0.08 * (gender == "M").astype(float)  # injected disparity
+    + rng.normal(0, 0.4, n)
+) * exposure
+
+# Fit a simple CatBoost frequency model inline
+feature_cols = ["vehicle_age", "driver_age", "ncd_years"]
+X = np.column_stack([vehicle_age, driver_age, ncd_years])
+y = claim_amount / exposure
+
+model = CatBoostRegressor(iterations=100, verbose=0)
+model.fit(X, y)
+
+predicted_premium = model.predict(X) * exposure
+
+df = pl.DataFrame({
+    "gender":            gender,
+    "vehicle_age":       vehicle_age,
+    "driver_age":        driver_age,
+    "ncd_years":         ncd_years,
+    "vehicle_group":     vehicle_group,
+    "postcode_district": postcode_district,
+    "exposure":          exposure,
+    "claim_amount":      claim_amount,
+    "predicted_premium": predicted_premium,
+})
 
 audit = FairnessAudit(
     model=model,
@@ -56,7 +94,7 @@ audit = FairnessAudit(
     exposure_col="exposure",
     factor_cols=[
         "postcode_district", "vehicle_age", "ncd_years",
-        "driver_age_band", "vehicle_group",
+        "vehicle_group",
     ],
     model_name="Motor Model Q4 2024",
     run_proxy_detection=True,
