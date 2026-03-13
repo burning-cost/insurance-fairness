@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "insurance-fairness"
-version = "0.2.0"
-description = "Proxy discrimination auditing for UK insurance pricing models. Implements FCA Consumer Duty and Equality Act 2010 compliance checks."
+version = "0.3.0"
+description = "Proxy discrimination auditing, discrimination-free pricing, and diagnostics for UK insurance pricing models. Implements FCA Consumer Duty and Equality Act 2010 compliance checks."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -20,6 +20,10 @@ keywords = [
     "pareto",
     "nsga2",
     "multi-objective",
+    "optimal-transport",
+    "discrimination-free",
+    "causal",
+    "shapley",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -39,6 +43,10 @@ dependencies = [
     "scipy>=1.11.0",
     "jinja2>=3.1.0",
     "pyarrow>=12.0.0",
+    # Added for optimal_transport subpackage
+    "statsmodels>=0.14",
+    "networkx>=3.0",
+    "POT>=0.9",
 ]
 
 [project.optional-dependencies]
@@ -58,9 +66,9 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/burningcost/insurance-fairness"
-Repository = "https://github.com/burningcost/insurance-fairness"
-Issues = "https://github.com/burningcost/insurance-fairness/issues"
+Homepage = "https://github.com/burning-cost/insurance-fairness"
+Repository = "https://github.com/burning-cost/insurance-fairness"
+Issues = "https://github.com/burning-cost/insurance-fairness/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/insurance_fairness"]

@@ -19,6 +19,23 @@ see :class:`~insurance_fairness.pareto.NSGA2FairnessOptimiser` and
 These require the optional ``pymoo`` dependency
 (``pip install insurance-fairness[pareto]``).
 
+v0.3.0 adds two subpackages:
+
+**insurance_fairness.optimal_transport** — discrimination-free pricing via
+Lindholm marginalisation, causal path decomposition, and Wasserstein barycenter
+correction::
+
+    from insurance_fairness.optimal_transport import (
+        CausalGraph,
+        DiscriminationFreePrice,
+        FCAReport,
+    )
+
+**insurance_fairness.diagnostics** — proxy discrimination diagnostics with
+D_proxy scalar, Shapley attribution, and per-policyholder vulnerability scores::
+
+    from insurance_fairness.diagnostics import ProxyDiscriminationAudit
+
 Quick start::
 
     import polars as pl
@@ -66,20 +83,32 @@ from insurance_fairness.proxy_detection import (
 )
 from insurance_fairness.report import generate_markdown_report
 
-__version__ = "0.2.0"
+# Subpackages: import for side-effects / discoverability
+from insurance_fairness import optimal_transport  # noqa: F401
+from insurance_fairness import diagnostics  # noqa: F401
+
+__version__ = "0.3.0"
 __all__ = [
+    # Core audit
     "FairnessAudit",
     "FairnessReport",
+    # Bias metrics
     "calibration_by_group",
     "demographic_parity_ratio",
     "disparate_impact_ratio",
     "equalised_odds",
     "gini_by_group",
     "theil_index",
+    # Counterfactual
     "counterfactual_fairness",
+    # Proxy detection
     "mutual_information_scores",
     "partial_correlation",
     "proxy_r2_scores",
     "shap_proxy_scores",
+    # Reporting
     "generate_markdown_report",
+    # Subpackages (import from subpackage directly)
+    "optimal_transport",
+    "diagnostics",
 ]
