@@ -309,7 +309,7 @@ Demonstrated on synthetic UK motor data (50,000 policies) with a known fairness 
 | Library | Description |
 |---------|-------------|
 | [insurance-deploy](https://github.com/burning-cost/insurance-deploy) | Champion/challenger framework with ENBP audit logging |
-| [insurance-elasticity](https://github.com/burning-cost/insurance-elasticity) | Causal price elasticity via Double Machine Learning |
+| [insurance-causal](https://github.com/burning-cost/insurance-causal) | Causal price elasticity and DML — includes elasticity subpackage |
 | [rate-optimiser](https://github.com/burning-cost/rate-optimiser) | Constrained rate change optimisation with FCA PS21/5 compliance |
 
 **Governance**
@@ -322,6 +322,24 @@ Demonstrated on synthetic UK motor data (50,000 policies) with a known fairness 
 [All libraries and blog posts →](https://burning-cost.github.io)
 
 ---
+
+## Performance
+
+No formal benchmark yet. Runtime depends primarily on the proxy detection methods enabled.
+
+| Task | Time (n=50,000 policies) |
+|------|--------------------------|
+| Calibration by group (10 deciles) | < 2s |
+| Demographic parity ratio | < 1s |
+| Proxy R-squared (per factor, CatBoost) | 15–60s |
+| Mutual information scores | < 5s |
+| SHAP proxy scores (requires full SHAP run) | 1–5 min |
+| Full FairnessAudit.run() with proxy detection | 2–10 min |
+| Markdown report generation | < 1s |
+
+For portfolios above 250,000 policies, the proxy R-squared fits run on a 50,000-row subsample by default (configurable). The metrics themselves use all rows.
+
+The library adds value over manual fairness review when the portfolio has multiple protected characteristics, multiple rating factors, and a regulatory requirement for a documented audit trail. For a simple sanity check on two groups with three factors, a direct A/E comparison by group is sufficient and faster.
 
 ## Licence
 
