@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "insurance-fairness"
+abstract: >
+  Proxy discrimination auditing for insurance pricing. Measures indirect
+  discrimination by protected characteristics in rating models, with
+  structured compliance reports for FCA Equality Principle EP25/2 and
+  Consumer Duty obligations in UK personal lines insurance.
+authors:
+  - name: "Burning Cost"
+    website: "https://burning-cost.github.io"
+repository-code: "https://github.com/burning-cost/insurance-fairness"
+license: MIT
+keywords:
+  - insurance-pricing
+  - actuarial
+  - fairness
+  - proxy-discrimination
+  - fca
+  - consumer-duty
+  - equality
+  - bias-detection
+  - uk-insurance
