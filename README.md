@@ -324,6 +324,11 @@ Demonstrated on synthetic UK motor data (50,000 policies) with a known fairness 
 **When to use:** Before any model goes to production pricing, and at regular intervals thereafter. The FCA's 2024 multi-firm review found most insurers were auditing inadequately. An audit that cannot answer "does this factor act as an ethnicity proxy?" is not sufficient under Consumer Duty.
 
 
+
+## Databricks Notebook
+
+A ready-to-run Databricks notebook benchmarking this library against standard approaches is available in [burning-cost-examples](https://github.com/burning-cost/burning-cost-examples/blob/main/notebooks/fairness_audit_demo.py).
+
 ## Other Burning Cost libraries
 
 **Model building**
