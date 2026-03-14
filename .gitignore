@@ -18,3 +18,4 @@ htmlcov/
 *.cbm
 *.parquet
 /tmp/
+catboost_info/
