@@ -379,6 +379,15 @@ For portfolios above 250,000 policies, the proxy R-squared fits run on a 50,000-
 
 The library adds value over manual fairness review when the portfolio has multiple protected characteristics, multiple rating factors, and a regulatory requirement for a documented audit trail. For a simple sanity check on two groups with three factors, a direct A/E comparison by group is sufficient and faster.
 
+
+## Related Libraries
+
+| Library | What it does |
+|---------|-------------|
+| [insurance-governance](https://github.com/burning-cost/insurance-governance) | PRA SS1/23 model validation reports — fairness audit outputs feed directly into the governance sign-off pack |
+| [insurance-causal](https://github.com/burning-cost/insurance-causal) | Causal inference — establishes whether a rating factor causally drives risk or is a proxy for a protected characteristic |
+| [insurance-synthetic](https://github.com/burning-cost/insurance-synthetic) | Synthetic portfolio generation — generate test data with known proxy structure to validate the audit pipeline |
+
 ## Licence
 
 MIT
