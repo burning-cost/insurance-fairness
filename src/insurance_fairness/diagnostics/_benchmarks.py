@@ -126,7 +126,6 @@ def compute_aware_premium(
     # Refit the model with S included
     aware_model = _clone_model(model, random_state)
     X_aware_np = _to_numpy_for_fit(model, X)
-    y_dummy = np.ones(len(X))  # We need the unaware prediction as target proxy
 
     # We cannot refit without a target. Use the unaware predictions as a proxy target.
     # This is the standard approach: refit on the model's own predictions (distillation).
@@ -220,13 +219,49 @@ def _clone_model(model: object, random_state: int) -> object:
 
     Falls back to a copy if clone() fails (e.g., for CatBoost models).
     Attempts to set random_state if the cloned model supports it.
+
+    CatBoost-specific handling:
+    - Uses 'random_seed' instead of 'random_state'. When sklearn's clone()
+      copies a CatBoost model, the cloned params already contain 'random_seed'.
+      Calling set_params(random_state=...) would add a second conflicting seed
+      parameter. We detect this and use set_params(random_seed=...) instead.
+    - 'use_best_model=True' requires an eval_set during fit(). When refitting
+      an aware model without an eval_set, we disable use_best_model and
+      early_stopping_rounds to avoid CatBoostError.
     """
     try:
         cloned = clone(model)
+        params = {}
         try:
-            cloned.set_params(random_state=random_state)
-        except (ValueError, TypeError):
+            params = cloned.get_params()
+        except Exception:
             pass
+
+        # Set random seed. CatBoost uses 'random_seed' not 'random_state'.
+        if "random_seed" in params:
+            try:
+                cloned.set_params(random_seed=random_state)
+            except (ValueError, TypeError):
+                pass
+        else:
+            try:
+                cloned.set_params(random_state=random_state)
+            except (ValueError, TypeError):
+                pass
+
+        # CatBoost: disable use_best_model and early_stopping_rounds because
+        # we will call fit() without an eval_set. These params require an eval_set.
+        if params.get("use_best_model", False):
+            try:
+                cloned.set_params(use_best_model=False)
+            except (ValueError, TypeError):
+                pass
+        if params.get("early_stopping_rounds") is not None:
+            try:
+                cloned.set_params(early_stopping_rounds=None)
+            except (ValueError, TypeError):
+                pass
+
         return cloned
     except Exception:
         # If clone fails, try direct instantiation from class
