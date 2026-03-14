@@ -47,6 +47,13 @@ from insurance_fairness._utils import (
 )
 
 
+def _encode_series(series: pl.Series) -> np.ndarray:
+    """Encode a Polars Series to a float numpy array, label-encoding strings."""
+    if series.dtype in (pl.Utf8, pl.String, pl.Categorical):
+        return series.cast(pl.Categorical).to_physical().to_numpy().astype(float)
+    return series.to_numpy().astype(float)
+
+
 @dataclass
 class ProxyScore:
     """Proxy score for a single rating factor / protected characteristic pair."""
@@ -158,7 +165,7 @@ def proxy_r2_scores(
     if is_binary_protected is None:
         is_binary_protected = s_series.dtype in (pl.Boolean, pl.Int8, pl.Int16, pl.Int32, pl.Int64) and set(s_series.unique().to_list()).issubset({0, 1, True, False})
 
-    s_arr = s_series.to_numpy().astype(float)
+    s_arr = _encode_series(s_series)
     exp_arr = exposure.to_numpy().astype(float)
 
     results: dict[str, float] = {}
@@ -290,7 +297,7 @@ def mutual_information_scores(
     if is_binary_protected is None:
         is_binary_protected = s_series.dtype in (pl.Boolean, pl.Int8, pl.Int16, pl.Int32, pl.Int64) and set(s_series.unique().to_list()).issubset({0, 1, True, False})
 
-    s_arr = s_series.to_numpy().astype(float)
+    s_arr = _encode_series(s_series)
     exp_arr = exposure.to_numpy().astype(float)
 
     X_matrix = []
@@ -500,7 +507,7 @@ def shap_proxy_scores(
             f"{len(factor_cols)} factor_cols were provided."
         )
 
-    s_arr = df[protected_col].to_numpy().astype(float)
+    s_arr = _encode_series(df[protected_col])
     results: dict[str, float] = {}
 
     for i, col in enumerate(factor_cols):
