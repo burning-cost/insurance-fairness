@@ -42,6 +42,12 @@ class LindholmCorrector:
     Implements h*(x) = sum_d mu_hat(x, d) * omega_d, where omega_d = P(D=d)
     are the portfolio proportions of the protected attribute.
 
+    The ``log_space`` parameter controls how model outputs are interpreted:
+    if True, the model returns predictions on the log scale (e.g. a GLM
+    linear predictor) and this class will exponentiate them before arithmetic
+    averaging. If False (default), model outputs are already on the natural
+    scale (e.g. claim frequencies or pure premiums).
+
     This is the primary correction for UK insurance fairness compliance.
     It achieves conditional fairness (equal price for equal risk), not
     demographic parity, which is the correct standard under the Equality Act
@@ -55,7 +61,7 @@ class LindholmCorrector:
         self,
         protected_attrs: list[str],
         bias_correction: Literal["proportional", "uniform", "kl"] = "proportional",
-        log_space: bool = True,
+        log_space: bool = False,
         d_values: dict[str, list] | None = None,
     ) -> None:
         self.protected_attrs = protected_attrs
@@ -193,12 +199,15 @@ class LindholmCorrector:
         D: pl.DataFrame,
         use_kl_weights: bool = False,
     ) -> np.ndarray:
-        """Compute h*(x_i) = sum_d mu_hat(x_i, d) * omega_d for all i."""
+        """Compute h*(x_i) = sum_d mu_hat(x_i, d) * omega_d for all i.
+
+        This is an arithmetic weighted average over the protected attribute
+        domain, as required by Lindholm (2022). The ``log_space`` flag only
+        controls whether model outputs are exponentiated before averaging
+        (i.e. when the model returns log-scale predictions).
+        """
         n = X.shape[0]
-        if self.log_space:
-            h_log = np.zeros(n)
-        else:
-            h = np.zeros(n)
+        h = np.zeros(n)
 
         for attr in self.protected_attrs:
             if use_kl_weights and hasattr(self, "_kl_portfolio_weights"):
@@ -213,13 +222,12 @@ class LindholmCorrector:
                 D_fixed = D.clone().with_columns(pl.lit(d_val).alias(attr))
                 XD = _concat_xd(X, D_fixed)
                 mu_d = model_fn(XD)
+                # Always arithmetic averaging (Lindholm 2022 eq. 3.1).
+                # If model outputs are on log-scale, exponentiate first.
                 if self.log_space:
-                    h_log += omega * np.log(np.maximum(mu_d, 1e-15))
-                else:
-                    h += omega * mu_d
+                    mu_d = np.exp(mu_d)
+                h += omega * mu_d
 
-        if self.log_space:
-            return np.exp(h_log)
         return h
 
     def transform(

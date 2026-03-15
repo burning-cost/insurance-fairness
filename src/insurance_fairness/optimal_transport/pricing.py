@@ -73,7 +73,7 @@ class DiscriminationFreePrice:
         severity_model_fn: Callable | None = None,
         combined_model_fn: Callable | None = None,
         bias_correction: Literal["proportional", "uniform", "kl"] = "proportional",
-        log_space: bool = True,
+        log_space: bool = False,
         epsilon: float = 0.0,
     ) -> None:
         graph.validate()

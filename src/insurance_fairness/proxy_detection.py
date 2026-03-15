@@ -118,8 +118,10 @@ def proxy_r2_scores(
     Compute CatBoost-based proxy R-squared for each rating factor.
 
     For each factor X_j, fits a CatBoost model predicting the protected
-    characteristic S from X_j alone, and returns the R-squared (for
-    continuous S) or AUC (for binary S) on a held-out validation set.
+    characteristic S from X_j alone, and returns the R-squared on a held-out validation set. For binary
+    S, R-squared is computed between predicted probabilities and true
+    binary labels. For continuous S, standard R-squared is used. Both
+    are clamped to [0, 1].
 
     A high value indicates X_j is a strong proxy for S: knowing X_j tells
     you a lot about the policyholder's protected characteristic. This does not
@@ -152,7 +154,8 @@ def proxy_r2_scores(
 
     Returns
     -------
-    dict mapping factor name to proxy R-squared (or AUC for binary S).
+    dict mapping factor name to proxy R-squared (R^2 between predicted
+    probability/value and true S, on a held-out validation set).
     """
     from catboost import CatBoostClassifier, CatBoostRegressor, Pool  # noqa: PLC0415
     from sklearn.metrics import r2_score, roc_auc_score  # noqa: PLC0415
@@ -216,10 +219,12 @@ def proxy_r2_scores(
             model.fit(train_pool, eval_set=val_pool, early_stopping_rounds=20)
             probs = model.predict_proba(x_val)[:, 1]
             try:
-                score = float(roc_auc_score(s_val.astype(int), probs))
-                # Convert AUC to R-squared-like scale for consistent thresholds
-                # Gini = 2*AUC - 1; normalise to [0, 1]
-                score = 2 * score - 1  # Gini coefficient
+                # Use R-squared of predicted probabilities vs true labels.
+                # This is consistent with the R-squared used for continuous S,
+                # and makes the proxy_r2 field and its thresholds meaningful for
+                # both binary and continuous protected characteristics.
+                score = float(r2_score(s_val.astype(int), probs, sample_weight=w_val))
+                score = max(0.0, score)  # Clamp negative R-squared to 0
             except Exception:
                 score = float("nan")
         else:

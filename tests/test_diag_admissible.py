@@ -267,7 +267,7 @@ class TestComputeDProxyWithCI:
         h_star = compute_admissible_price(h, s, weights)
 
         d_proxy, ci = compute_d_proxy_with_ci(
-            h, h_star, weights, n_bootstrap=50, rng=np.random.default_rng(42)
+            h, s, weights, n_bootstrap=50, rng=np.random.default_rng(42)
         )
 
         assert isinstance(d_proxy, float)
@@ -283,7 +283,7 @@ class TestComputeDProxyWithCI:
         weights = np.ones(n)
         h_star = compute_admissible_price(h, s, weights)
 
-        _, ci = compute_d_proxy_with_ci(h, h_star, weights, n_bootstrap=100)
+        _, ci = compute_d_proxy_with_ci(h, s, weights, n_bootstrap=100)
 
         assert ci[0] <= ci[1]
 
@@ -301,7 +301,7 @@ class TestComputeDProxyWithCI:
         h_star = compute_admissible_price(h, s, weights)
 
         d_proxy, ci = compute_d_proxy_with_ci(
-            h, h_star, weights, n_bootstrap=100, rng=np.random.default_rng(0)
+            h, s, weights, n_bootstrap=100, rng=np.random.default_rng(0)
         )
 
         # Both groups have the same mean, so d_proxy should be ~0
@@ -317,10 +317,10 @@ class TestComputeDProxyWithCI:
         h_star = compute_admissible_price(h, s, weights)
 
         _, ci1 = compute_d_proxy_with_ci(
-            h, h_star, weights, n_bootstrap=50, rng=np.random.default_rng(7)
+            h, s, weights, n_bootstrap=50, rng=np.random.default_rng(7)
         )
         _, ci2 = compute_d_proxy_with_ci(
-            h, h_star, weights, n_bootstrap=50, rng=np.random.default_rng(7)
+            h, s, weights, n_bootstrap=50, rng=np.random.default_rng(7)
         )
 
         assert ci1 == ci2
@@ -336,7 +336,7 @@ class TestComputeDProxyWithCI:
         h_star = compute_admissible_price(h, s, weights)
 
         d_proxy, ci = compute_d_proxy_with_ci(
-            h, h_star, weights, n_bootstrap=100, rng=np.random.default_rng(0)
+            h, s, weights, n_bootstrap=100, rng=np.random.default_rng(0)
         )
 
         assert ci[0] <= d_proxy <= ci[1]

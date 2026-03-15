@@ -262,23 +262,58 @@ class PathDecomposer:
         # Total shift = log(best_est) - log(ref_pred)
         total_shift = np.log(best_est) - np.log(ref_pred)
 
-        # Proxy effect: neutralise justified mediators at reference D
+        # Helper: compute a scalar "neutral" value for a column in the reference group.
+        # For numeric columns: exposure-weighted mean within gender=ref_val.
+        # For string/categorical columns: mode (most common value) within gender=ref_val.
+        # This is used to neutralise a mediator column's variation while keeping
+        # gender fixed at ref_val, so that the path S -> mediator -> Y is blocked.
+        def _neutral_value(col: str) -> object:
+            if attr in X.columns:
+                ref_mask = (X[attr] == ref_val).to_numpy()
+                ref_rows = X.filter(pl.Series(ref_mask))
+            else:
+                ref_rows = X
+            if len(ref_rows) == 0:
+                ref_rows = X
+            series = ref_rows[col]
+            if series.dtype in (pl.Utf8, pl.String, pl.Categorical, pl.Boolean):
+                # Mode: most frequent value
+                counts = series.value_counts(sort=True)
+                return counts[col][0]
+            else:
+                # Exposure-weighted mean (use uniform weights for simplicity)
+                return float(series.mean())
+
+        # Proxy effect: neutralise justified mediators (set to ref-group average/mode),
+        # keep proxy columns at their original values, gender at ref_val.
+        # This isolates the variation that flows through proxy paths only.
+        # proxy_shift = pred(gender=ref, justified=neutral, proxy=original) - pred(X_ref)
         if justified_nodes:
             X_no_justified = X_ref.clone()
-            # Keep proxy values from original X; justified mediators at reference
+            for col in justified_nodes:
+                if col in X.columns and col in X_no_justified.columns:
+                    neutral = _neutral_value(col)
+                    X_no_justified = X_no_justified.with_columns(
+                        pl.lit(neutral).alias(col)
+                    )
             proxy_pred = self.model_fn(X_no_justified)
             proxy_shift = np.log(proxy_pred) - np.log(ref_pred)
         else:
             proxy_shift = np.zeros(n)
 
-        # Justified effect: residual after removing proxy shift
+        # Justified effect: residual after removing proxy shift from total.
         justified_shift = total_shift - proxy_shift
 
-        # Direct effect: portion of total not mediated by any intermediary
-        # Approximated as the shift when all mediating variables are neutralised
+        # Direct effect: neutralise ALL mediating variables (both proxy and justified),
+        # keeping gender at ref_val. This leaves only the direct S -> Y pathway.
+        # direct_shift = pred(gender=ref, all_mediators=neutral) - pred(X_ref)
         intermediary_nodes = set(proxy_nodes) | set(justified_nodes)
         if intermediary_nodes:
             X_no_med = X_ref.clone()
+            for col in intermediary_nodes:
+                if col in X.columns and col in X_no_med.columns:
+                    neutral = _neutral_value(col)
+                    X_no_med = X_no_med.with_columns(pl.lit(neutral).alias(col))
             direct_pred = self.model_fn(X_no_med)
             direct_shift = np.log(direct_pred) - np.log(ref_pred)
         else:

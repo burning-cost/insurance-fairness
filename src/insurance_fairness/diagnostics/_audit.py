@@ -262,10 +262,11 @@ class ProxyDiscriminationAudit:
         s = self.X[self.sensitive_col].to_numpy()
         h_star = compute_admissible_price(h, s, weights, self.reference_dist)
 
-        # 3. Compute D_proxy with bootstrap CI
+        # 3. Compute D_proxy with bootstrap CI.
+        # Pass s so h_star is recomputed on each bootstrap resample.
         d_proxy, d_proxy_ci = compute_d_proxy_with_ci(
             h=h,
-            h_star=h_star,
+            s=s,
             weights=weights,
             n_bootstrap=200,
             ci_level=0.95,

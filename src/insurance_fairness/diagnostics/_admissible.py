@@ -149,7 +149,7 @@ def compute_d_proxy(
 
 def compute_d_proxy_with_ci(
     h: np.ndarray,
-    h_star: np.ndarray,
+    s: np.ndarray,
     weights: np.ndarray,
     n_bootstrap: int = 200,
     ci_level: float = 0.95,
@@ -159,15 +159,18 @@ def compute_d_proxy_with_ci(
     Compute D_proxy and a bootstrap confidence interval.
 
     The bootstrap resamples policyholders (with replacement) and recomputes
-    D_proxy on each resample. This captures sampling uncertainty in the
-    between-group dispersion estimate.
+    D_proxy on each resample, including recomputing h_star (within-group means)
+    from the resampled data. This is critical: passing a pre-computed h_star
+    and resampling (h, h_star) pairs in lockstep would freeze the group means
+    at their full-sample values and underestimate CI width.
 
     Parameters
     ----------
     h:
         Fitted prices.
-    h_star:
-        Admissible prices (within-S-group means).
+    s:
+        Sensitive attribute values (same shape as h), used to recompute
+        h_star = E[h|S] on each bootstrap resample.
     weights:
         Exposure weights.
     n_bootstrap:
@@ -184,13 +187,19 @@ def compute_d_proxy_with_ci(
     if rng is None:
         rng = np.random.default_rng(42)
 
+    h_star = compute_admissible_price(h, s, weights)
     d_proxy = compute_d_proxy(h, h_star, weights)
 
     n = len(h)
     stats = np.empty(n_bootstrap)
     for i in range(n_bootstrap):
         idx = rng.integers(0, n, size=n)
-        stats[i] = compute_d_proxy(h[idx], h_star[idx], weights[idx])
+        h_boot = h[idx]
+        s_boot = s[idx]
+        w_boot = weights[idx]
+        # Recompute within-group means on the resample -- this is the fix.
+        h_star_boot = compute_admissible_price(h_boot, s_boot, w_boot)
+        stats[i] = compute_d_proxy(h_boot, h_star_boot, w_boot)
 
     alpha = (1.0 - ci_level) / 2.0
     ci = (float(np.quantile(stats, alpha)), float(np.quantile(stats, 1.0 - alpha)))
