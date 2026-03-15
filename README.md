@@ -389,3 +389,7 @@ The library adds value over manual fairness review when the portfolio has multip
 ## Licence
 
 BSD-3
+
+---
+
+**Need help implementing this in production?** [Talk to us](https://burning-cost.github.io/work-with-us/).
