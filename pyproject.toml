@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "insurance-fairness"
-version = "0.3.3"
+version = "0.3.4"
 description = "Proxy discrimination auditing, discrimination-free pricing, and diagnostics for UK insurance pricing models. Implements FCA Consumer Duty and Equality Act 2010 compliance checks."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -69,6 +69,7 @@ all = [
 Homepage = "https://github.com/burning-cost/insurance-fairness"
 Repository = "https://github.com/burning-cost/insurance-fairness"
 Issues = "https://github.com/burning-cost/insurance-fairness/issues"
+Documentation = "https://github.com/burning-cost/insurance-fairness#readme"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/insurance_fairness"]
