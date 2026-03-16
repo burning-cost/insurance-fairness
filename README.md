@@ -363,9 +363,11 @@ Demonstrated on synthetic UK motor data (50,000 policies) with a known fairness 
 
 ---
 
-## Performance
+## Benchmark: Proxy discrimination detection
 
-**Proxy detection benchmark** — 20,000 synthetic UK motor policies with known postcode-ethnicity proxy structure (London postcodes: diversity score ~0.70; outer cities: ~0.40; rural: ~0.20). Six rating factors: postcode_area, vehicle_group, ncd_years, age_band, annual_mileage, payment_method. Results from the post-P0-fix benchmark run:
+20,000 synthetic UK motor policies with a known postcode–ethnicity proxy structure. London postcode areas are assigned a diversity score of ~0.70, outer cities ~0.40, and rural areas ~0.20. Six rating factors are tested: postcode_area, vehicle_group, ncd_years, age_band, annual_mileage, payment_method. The protected attribute (diversity score) is never given to the model — only present for detection.
+
+The benchmark compares a standard manual check (pairwise Spearman correlation) against the library's three-method approach (proxy R², mutual information, SHAP proxy scores).
 
 | Factor | Spearman r (manual) | Proxy R² (library) | MI (nats) | SHAP proxy score | Library status |
 |--------|--------------------|--------------------|-----------|-----------------|----------------|
@@ -374,25 +376,27 @@ Demonstrated on synthetic UK motor data (50,000 policies) with a known fairness 
 | ncd_years | −0.0050 | 0.0000 | 0.0063 | 0.0116 | GREEN |
 | age_band | −0.0045 | 0.0000 | 0.0025 | 0.0329 | GREEN |
 | annual_mileage | −0.0034 | 0.0000 | 0.0056 | 0.0031 | GREEN |
-| payment_method | 0.0094 | 0.0000 | 0.0038 | nan | GREEN |
+| payment_method | 0.0094 | 0.0000 | 0.0038 | n/a | GREEN |
 
-**Manual Spearman check:** 0/6 factors flagged (all |r| < 0.25 threshold).  
+**Manual Spearman check:** 0/6 factors flagged (all |r| < 0.25).  
 **Library proxy_r2 + MI:** 1/6 factors flagged (postcode_area RED).
 
-The Spearman check completely misses the postcode proxy despite a proxy R² of 0.78 — the relationship is non-linear and categorical. A postcode area predicts ethnicity diversity scores near-perfectly within this synthetic portfolio, but pairwise rank correlation does not capture this because postcode area encodes group identity, not a monotone ordering. The SHAP proxy score of 0.75 confirms this translates directly into price impact.
-
-**Timing (n=20,000 policies):**
+**Timing (n=20,000 policies, measured on Databricks serverless):**
 
 | Task | Measured time |
 |------|---------------|
-| Proxy R² (6 factors, CatBoost, 80 iterations) | 1.0s |
-| Mutual information scores | < 1s |
-| SHAP proxy scores (CatBoost, 150 iterations) | included in total |
-| Full benchmark end-to-end | 8.0s |
+| Proxy R² (6 factors, CatBoost, 80 iterations) | 0.5s |
+| Mutual information scores | included |
+| SHAP proxy scores (CatBoost, 150 iterations) | included |
+| Full benchmark end-to-end | 4.1s |
 
-At n=50,000 the proxy R² scales roughly linearly; expect 2–3s per factor. For portfolios above 250,000 policies, the proxy R² fits run on a 50,000-row subsample by default (configurable). The metrics themselves use all rows.
+### Key findings
 
-The library adds value over manual fairness review when the portfolio has multiple protected characteristics, multiple rating factors, and a regulatory requirement for a documented audit trail. For a simple sanity check on two groups with three factors, a direct A/E comparison by group is sufficient and faster.
+- The Spearman correlation check returns 0/6 flagged — all correlations are below 0.25. It completely misses the postcode proxy. The relationship is non-linear and categorical: postcode area encodes group identity rather than a monotone ordering, so rank correlation cannot detect it.
+- The library's CatBoost proxy R² for postcode_area is 0.78 — a single postcode area variable accounts for 78% of the variance in the ethnicity diversity score. That is a near-certain proxy relationship. Mutual information (0.82 nats) confirms it independently.
+- The SHAP proxy score of 0.75 for postcode_area shows that the proxy relationship is not dormant — it is actively propagating into model prices. A factor can have high proxy R² but low SHAP proxy score if it is in the model but poorly weighted; here, the full chain from factor to protected attribute to price impact is present.
+
+At n=50,000 the proxy R² scales roughly linearly; expect ~1s per factor. For portfolios above 250,000 policies, the proxy R² fits run on a 50,000-row subsample by default (configurable). The metrics themselves use all rows.
 
 ## Related Libraries
 
