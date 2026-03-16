@@ -364,17 +364,32 @@ Demonstrated on synthetic UK motor data (50,000 policies) with a known fairness 
 
 ## Performance
 
-| Task | Time (n=50,000 policies) |
-|------|--------------------------|
-| Calibration by group (10 deciles) | < 2s |
-| Demographic parity ratio | < 1s |
-| Proxy R-squared (per factor, CatBoost) | 15–60s |
-| Mutual information scores | < 5s |
-| SHAP proxy scores (requires full SHAP run) | 1–5 min |
-| Full FairnessAudit.run() with proxy detection | 2–10 min |
-| Markdown report generation | < 1s |
+**Proxy detection benchmark** — 20,000 synthetic UK motor policies with known postcode-ethnicity proxy structure (London postcodes: diversity score ~0.70; outer cities: ~0.40; rural: ~0.20). Six rating factors: postcode_area, vehicle_group, ncd_years, age_band, annual_mileage, payment_method. Results from the post-P0-fix benchmark run:
 
-For portfolios above 250,000 policies, the proxy R-squared fits run on a 50,000-row subsample by default (configurable). The metrics themselves use all rows.
+| Factor | Spearman r (manual) | Proxy R² (library) | MI (nats) | SHAP proxy score | Library status |
+|--------|--------------------|--------------------|-----------|-----------------|----------------|
+| postcode_area | 0.0634 | **0.7767** | **0.8169** | **0.7513** | RED |
+| vehicle_group | 0.0160 | 0.0000 | 0.0019 | 0.0040 | GREEN |
+| ncd_years | −0.0050 | 0.0000 | 0.0063 | 0.0116 | GREEN |
+| age_band | −0.0045 | 0.0000 | 0.0025 | 0.0329 | GREEN |
+| annual_mileage | −0.0034 | 0.0000 | 0.0056 | 0.0031 | GREEN |
+| payment_method | 0.0094 | 0.0000 | 0.0038 | nan | GREEN |
+
+**Manual Spearman check:** 0/6 factors flagged (all |r| < 0.25 threshold).  
+**Library proxy_r2 + MI:** 1/6 factors flagged (postcode_area RED).
+
+The Spearman check completely misses the postcode proxy despite a proxy R² of 0.78 — the relationship is non-linear and categorical. A postcode area predicts ethnicity diversity scores near-perfectly within this synthetic portfolio, but pairwise rank correlation does not capture this because postcode area encodes group identity, not a monotone ordering. The SHAP proxy score of 0.75 confirms this translates directly into price impact.
+
+**Timing (n=20,000 policies):**
+
+| Task | Measured time |
+|------|---------------|
+| Proxy R² (6 factors, CatBoost, 80 iterations) | 1.0s |
+| Mutual information scores | < 1s |
+| SHAP proxy scores (CatBoost, 150 iterations) | included in total |
+| Full benchmark end-to-end | 8.0s |
+
+At n=50,000 the proxy R² scales roughly linearly; expect 2–3s per factor. For portfolios above 250,000 policies, the proxy R² fits run on a 50,000-row subsample by default (configurable). The metrics themselves use all rows.
 
 The library adds value over manual fairness review when the portfolio has multiple protected characteristics, multiple rating factors, and a regulatory requirement for a documented audit trail. For a simple sanity check on two groups with three factors, a direct A/E comparison by group is sufficient and faster.
 
