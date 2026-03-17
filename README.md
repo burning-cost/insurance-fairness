@@ -6,6 +6,8 @@
 [![License](https://img.shields.io/badge/license-BSD--3-blue)]()
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/burning-cost/insurance-fairness/blob/main/notebooks/quickstart.ipynb)
 
+> 💬 Questions or feedback? Start a [Discussion](https://github.com/burning-cost/insurance-fairness/discussions). Found it useful? A ⭐ helps others find it.
+
 **Your postcode rating factor is probably an ethnicity proxy. Here's how to prove it — and document it for the FCA.**
 
 UK insurers face a genuine compliance obligation to demonstrate their pricing models do not discriminate against customers with protected characteristics. The FCA Consumer Duty (PRIN 2A, live July 2023) requires firms to monitor whether their products provide fair value for different groups of customers, and the FCA's multi-firm review (2024) found most insurers were doing this inadequately. The Equality Act 2010 Section 19 independently prohibits indirect discrimination through rating factors that act as proxies for protected characteristics.
