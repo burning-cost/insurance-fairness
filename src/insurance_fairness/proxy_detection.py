@@ -354,8 +354,16 @@ def partial_correlation(
     exposure_col: str | None = None,
 ) -> dict[str, float]:
     """
-    Compute partial Spearman correlation between each factor and the protected
+    Compute partial Pearson correlation between each factor and the protected
     characteristic, controlling for other specified variables.
+
+    The implementation residualises both X_j and S on the control variables
+    using OLS on raw (encoded) values, then computes Spearman rank correlation
+    on the residuals. Because residualisation is performed in the original
+    (non-rank) space, this is a partial Pearson-based procedure, not partial
+    Spearman. The Spearman step on the residuals provides robustness to
+    outliers in the final correlation step, but the control step itself is
+    linear (OLS), not rank-based.
 
     For factor X_j and protected attribute S, the partial correlation controls
     for the variables in *control_cols*. This asks: "After accounting for the
@@ -382,7 +390,8 @@ def partial_correlation(
 
     Returns
     -------
-    dict mapping factor name to partial Spearman correlation with S.
+    dict mapping factor name to partial Pearson-residualised Spearman
+    correlation with S.
     """
     from scipy.stats import spearmanr  # noqa: PLC0415
 
@@ -396,7 +405,7 @@ def partial_correlation(
         return series.to_numpy().astype(float)
 
     def _residualise(y: np.ndarray, X: np.ndarray) -> np.ndarray:
-        """Return OLS residuals of y on X (with intercept)."""
+        """Return OLS residuals of y on X (with intercept). Operates on raw encoded values, not ranks."""
         X_with_intercept = np.column_stack([np.ones(len(X)), X])
         try:
             coeffs, _, _, _ = np.linalg.lstsq(X_with_intercept, y, rcond=None)
@@ -567,7 +576,7 @@ def detect_proxies(
     run_mutual_info:
         Whether to compute mutual information.
     run_partial_corr:
-        Whether to compute partial Spearman correlations.
+        Whether to compute partial Pearson-residualised correlations (see partial_correlation).
     run_shap:
         Whether to compute SHAP proxy scores. Requires *model*.
     catboost_iterations:

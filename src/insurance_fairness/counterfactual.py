@@ -39,6 +39,8 @@ Pricing. ASTIN Bulletin 52(1), 55-89.
 
 from __future__ import annotations
 
+import warnings
+
 from dataclasses import dataclass
 from typing import Any, Sequence
 
@@ -313,8 +315,14 @@ def _lrtw_marginalise(
     s_vals = df[protected_col].to_numpy()
 
     if protected_col not in feature_cols:
-        # Model does not use S directly - predictions won't change
-        # Return original predictions
+        # Model does not use S directly - predictions won't change.
+        warnings.warn(
+            f"Protected characteristic '{protected_col}' is not in the model features. "
+            "LRTW marginalisation has no effect — predictions are returned unchanged. "
+            "Consider using proxy detection to check for indirect discrimination.",
+            UserWarning,
+            stacklevel=2,
+        )
         cat_cols = [
             c for c in feature_cols
             if df[c].dtype in (pl.Utf8, pl.String, pl.Categorical)

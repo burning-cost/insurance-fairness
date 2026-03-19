@@ -92,7 +92,10 @@ y = claim_amount / exposure
 model = CatBoostRegressor(iterations=100, verbose=0)
 model.fit(X, y)
 
-predicted_premium = model.predict(X) * exposure
+# predicted_rate is the model output on the rate scale (claims per unit exposure).
+# Do not multiply by exposure here: calibration_by_group expects a rate and
+# multiplies by exposure internally when computing sum(predicted * exposure).
+predicted_rate = model.predict(X)
 
 df = pl.DataFrame({
     "gender":            gender,
@@ -103,14 +106,14 @@ df = pl.DataFrame({
     "postcode_district": postcode_district,
     "exposure":          exposure,
     "claim_amount":      claim_amount,
-    "predicted_premium": predicted_premium,
+    "predicted_rate":    predicted_rate,
 })
 
 audit = FairnessAudit(
     model=model,
     data=df,
     protected_cols=["gender"],            # or ethnicity proxy from ONS LSOA data
-    prediction_col="predicted_premium",
+    prediction_col="predicted_rate",      # rate, not total — calibration_by_group multiplies by exposure
     outcome_col="claim_amount",
     exposure_col="exposure",
     factor_cols=[

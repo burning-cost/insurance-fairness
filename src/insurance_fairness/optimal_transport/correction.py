@@ -310,7 +310,7 @@ class WassersteinCorrector:
         n_quantiles: int = 1000,
         log_space: bool = True,
         exposure_weighted: bool = True,
-        method: Literal["sequential", "multimarginal"] = "sequential",
+        method: Literal["sequential"] = "sequential",
     ) -> None:
         validate_epsilon(epsilon)
         self.protected_attrs = protected_attrs
