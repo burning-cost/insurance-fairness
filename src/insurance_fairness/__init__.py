@@ -80,6 +80,7 @@ from insurance_fairness.proxy_detection import (
     partial_correlation,
     proxy_r2_scores,
     shap_proxy_scores,
+    detect_proxies,
 )
 from insurance_fairness.report import generate_markdown_report
 
@@ -106,6 +107,7 @@ __all__ = [
     "partial_correlation",
     "proxy_r2_scores",
     "shap_proxy_scores",
+    "detect_proxies",
     # Reporting
     "generate_markdown_report",
     # Subpackages (import from subpackage directly)
