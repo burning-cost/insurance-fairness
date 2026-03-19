@@ -13,6 +13,17 @@ Implements fairness diagnostics and audit reporting aligned with:
 The primary entry point is :class:`FairnessAudit`, which runs a full audit
 of a CatBoost pricing model and returns a structured :class:`FairnessReport`.
 
+For proxy detection without a full audit, use :func:`detect_proxies` directly::
+
+    from insurance_fairness import detect_proxies, ProxyDetectionResult
+
+    result = detect_proxies(
+        df=df,
+        protected_col="gender",
+        factor_cols=["age_band", "vehicle_group", "occupation"],
+    )
+    result.summary()
+
 For multi-objective Pareto optimisation of the fairness-accuracy trade-off,
 see :class:`~insurance_fairness.pareto.NSGA2FairnessOptimiser` and
 :class:`~insurance_fairness.pareto.ParetoResult` in the ``pareto`` module.
@@ -76,11 +87,12 @@ from insurance_fairness.bias_metrics import (
 )
 from insurance_fairness.counterfactual import counterfactual_fairness
 from insurance_fairness.proxy_detection import (
+    detect_proxies,
     mutual_information_scores,
     partial_correlation,
     proxy_r2_scores,
+    ProxyDetectionResult,
     shap_proxy_scores,
-    detect_proxies,
 )
 from insurance_fairness.report import generate_markdown_report
 
@@ -88,7 +100,7 @@ from insurance_fairness.report import generate_markdown_report
 from insurance_fairness import optimal_transport  # noqa: F401
 from insurance_fairness import diagnostics  # noqa: F401
 
-__version__ = "0.3.1"
+__version__ = "0.3.7"
 __all__ = [
     # Core audit
     "FairnessAudit",
@@ -103,11 +115,12 @@ __all__ = [
     # Counterfactual
     "counterfactual_fairness",
     # Proxy detection
+    "detect_proxies",
+    "ProxyDetectionResult",
     "mutual_information_scores",
     "partial_correlation",
     "proxy_r2_scores",
     "shap_proxy_scores",
-    "detect_proxies",
     # Reporting
     "generate_markdown_report",
     # Subpackages (import from subpackage directly)
