@@ -146,7 +146,7 @@ class FairnessReport:
 
 
 class FCAReport:
-    """Produces FCA-ready output for PS21/5 (GIPP pricing remedies), PS22/9 (Consumer Duty), and EP25/2 evidence.
+    """Produces FCA-ready output for PS21/5 (GIPP pricing remedies), PS22/9 (Consumer Duty), and Equality Act 2010 s.19 evidence.
 
     Covers the nine sections required for fair value attestation:
     1. Executive Summary

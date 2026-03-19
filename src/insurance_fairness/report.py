@@ -68,10 +68,11 @@ regulatory requirements:
   characteristics, enabling the firm to assess whether this correlation
   constitutes indirect discrimination.
 
-**FCA Evaluation Paper EP25/2 (2025)**
+**FCA Consumer Duty record-keeping (PRIN 2A.4.6)**
 
-- Compliance requires keeping written records demonstrating that pricing
-  does not systematically discriminate.
+- Firms must regularly review and document their monitoring of fair value
+  outcomes across customer groups. Keeping written records of this analysis
+  satisfies the Consumer Duty governance expectation.
 - This report constitutes part of that written record.
 
 **ICOBS and SYSC requirements**

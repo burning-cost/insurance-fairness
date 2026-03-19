@@ -305,7 +305,7 @@ The library does not bundle this data (it is large and updated quarterly). The j
 
 **Equality Act 2010, Section 19 (Indirect Discrimination):** A rating factor that puts persons sharing a protected characteristic at a particular disadvantage constitutes indirect discrimination unless justified as a proportionate means of achieving a legitimate aim. The proxy detection module identifies which factors are at risk of constituting indirect discrimination.
 
-**FCA Evaluation Paper EP25/2 (2025):** EP25/2 is an evaluation of the FCA's pricing practices remedies from PS21/5, not a compliance instrument. It specifically examined whether firms were monitoring fair value outcomes by customer group. Evidence of systematic monitoring, documented in the pricing committee file, is the expected standard — the Markdown audit report is designed for exactly this purpose.
+**FCA Evaluation Paper EP25/2 (2025):** EP25/2 evaluates whether the GIPP price-walking remedies achieved their intended outcomes. It is a backward-looking evaluation paper, not a compliance instrument, and imposes no obligations on firms. It is not about proxy discrimination or protected characteristics monitoring.
 
 The FCA has not prescribed a specific methodology. The academic framework underlying this library (Lindholm, Richman, Tsanakas, Wüthrich, 2022-2026) has strong credentials — published in ASTIN Bulletin and the European Journal of Operational Research, and awarded by the American Academy of Actuaries. Using a published, peer-reviewed methodology is more defensible than a bespoke approach.
 
