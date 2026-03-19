@@ -126,26 +126,30 @@ report.summary()                         # print to console
 report.to_markdown("audit_q4_2024.md")  # write FCA-ready report
 ```
 
+Note that `factor_cols` may include factors not used as model inputs. The audit checks for proxy contamination in both model inputs and non-model factors — a factor that is not in the model can still correlate with protected characteristics and inform future model development decisions. In this example, `postcode_district` and `vehicle_group` are included in the audit even though neither is a feature in the fitted model.
+
 ### Output example
+
+The output below is from running the quickstart code above (n=1,000 policies, seed=42). With this small synthetic
+dataset and no real postcode-ethnicity correlation in the data, proxy detection finds nothing. The RED calibration
+status reflects noise at small n — try n=50,000 for a more representative audit.
 
 ```
 ============================================================
 Fairness Audit: Motor Model Q4 2024
-Date: 2024-12-01
-Policies: 250,000 | Exposure: 187,432.1
-Overall status: AMBER
+Date: 2026-03-19
+Policies: 1,000 | Exposure: 645.5
+Overall status: RED
 ============================================================
 
 Protected characteristic: gender
 ----------------------------------------
-  Demographic parity log-ratio: +0.0821 (ratio: 1.0855) [AMBER]
-  Max calibration disparity: 0.0623 [GREEN]
-  Disparate impact ratio: 0.9210 [AMBER]
-  Flagged proxy factors (2): postcode_district, vehicle_group
+  Demographic parity log-ratio: -0.0002 (ratio: 0.9998) [GREEN]
+  Max calibration disparity: 1.5887 [RED]
+  Disparate impact ratio: 0.9922 [GREEN]
+  No factors flagged as proxies.
 
-Factors with proxy concerns (across all protected characteristics):
-  - postcode_district
-  - vehicle_group
+No rating factors flagged with proxy concerns.
 ```
 
 ## Modules
@@ -298,7 +302,7 @@ The library does not bundle this data (it is large and updated quarterly). The j
 
 **Equality Act 2010, Section 19 (Indirect Discrimination):** A rating factor that puts persons sharing a protected characteristic at a particular disadvantage constitutes indirect discrimination unless justified as a proportionate means of achieving a legitimate aim. The proxy detection module identifies which factors are at risk of constituting indirect discrimination.
 
-**FCA Evaluation Paper EP25/2 (2025):** Compliance requires written records demonstrating pricing does not systematically discriminate. The Markdown audit report is designed for inclusion in the pricing committee file and FCA supervisory review.
+**FCA Evaluation Paper EP25/2 (2025):** EP25/2 is an evaluation of the FCA's pricing practices remedies from PS21/5, not a compliance instrument. It specifically examined whether firms were monitoring fair value outcomes by customer group. Evidence of systematic monitoring, documented in the pricing committee file, is the expected standard — the Markdown audit report is designed for exactly this purpose.
 
 The FCA has not prescribed a specific methodology. The academic framework underlying this library (Lindholm, Richman, Tsanakas, Wüthrich, 2022-2026) has strong credentials — published in ASTIN Bulletin and the European Journal of Operational Research, and awarded by the American Academy of Actuaries. Using a published, peer-reviewed methodology is more defensible than a bespoke approach.
 
