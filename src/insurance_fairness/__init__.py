@@ -56,6 +56,22 @@ for multicalibration fairness (Denuit, Michaelides & Trufin, 2026)::
     report = audit.audit(y_true, y_pred, protected, exposure)
     corrected = audit.correct(y_pred, protected, report, exposure)
 
+v0.3.8 adds :class:`PrivatizedFairnessAudit` — discrimination-free pricing
+when protected attributes are privatised via local differential privacy or
+estimated from proxies (Zhang, Liu & Shi, 2025)::
+
+    from insurance_fairness import PrivatizedFairnessAudit
+
+    audit = PrivatizedFairnessAudit(
+        n_groups=2,
+        epsilon=2.0,                          # LDP budget (pi ~ 0.88)
+        reference_distribution="uniform",     # equal group weighting
+        loss="poisson",
+    )
+    audit.fit(X, Y, S)                        # S = privatised attribute
+    fair_premium = audit.predict_fair_premium(X_new)
+    report = audit.audit_report()
+
 Quick start::
 
     import polars as pl
@@ -86,6 +102,9 @@ Pricing Models. arXiv:2512.24747.
 
 Denuit, Michaelides & Trufin (2026). Multicalibration in Insurance Pricing.
 arXiv:2603.16317.
+
+Zhang, Liu & Shi (2025). Discrimination-Free Insurance Pricing with Privatized
+Sensitive Attributes. arXiv:2504.11775.
 """
 
 from insurance_fairness.audit import FairnessAudit, FairnessReport
@@ -99,6 +118,7 @@ from insurance_fairness.bias_metrics import (
 )
 from insurance_fairness.counterfactual import counterfactual_fairness
 from insurance_fairness.multicalibration import MulticalibrationAudit, MulticalibrationReport
+from insurance_fairness.privatized_audit import PrivatizedFairnessAudit, PrivatizedAuditResult
 from insurance_fairness.proxy_detection import (
     detect_proxies,
     mutual_information_scores,
@@ -130,6 +150,9 @@ __all__ = [
     # Multicalibration
     "MulticalibrationAudit",
     "MulticalibrationReport",
+    # Privatized audit (LDP)
+    "PrivatizedFairnessAudit",
+    "PrivatizedAuditResult",
     # Proxy detection
     "detect_proxies",
     "ProxyDetectionResult",

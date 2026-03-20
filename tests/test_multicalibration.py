@@ -22,6 +22,7 @@ Tests cover:
 from __future__ import annotations
 
 import numpy as np
+import polars as pl
 import pytest
 
 from insurance_fairness.multicalibration import MulticalibrationAudit, MulticalibrationReport
