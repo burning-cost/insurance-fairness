@@ -113,7 +113,7 @@ from insurance_fairness.report import generate_markdown_report
 from insurance_fairness import optimal_transport  # noqa: F401
 from insurance_fairness import diagnostics  # noqa: F401
 
-__version__ = "0.3.7"
+__version__ = "0.3.8"
 __all__ = [
     # Core audit
     "FairnessAudit",
