@@ -43,6 +43,7 @@ The library surfaces proxy concerns that a direct A/E comparison by group will m
 - Computes exposure-weighted fairness metrics appropriate for insurance: calibration by group, demographic parity ratio in log-space, disparate impact ratio, Gini by group, Theil index
 - Runs counterfactual fairness tests by flipping protected characteristics and measuring premium impact
 - Produces structured Markdown audit reports with explicit FCA regulatory mapping, suitable for pricing committee packs and FCA file reviews
+- Corrects distortion risk measure premiums (Expected Shortfall, Wang transform) to be marginally fair with respect to protected attributes — closed-form, no iterative solver (Huang & Pesenti, 2025)
 
 ## Installation
 
@@ -375,6 +376,53 @@ md = generate_markdown_report(report)
 # - Sign-off table for senior actuary attestation
 ```
 
+### `marginal_fairness`
+
+**New in v0.5.0.** Closed-form correction for distortion risk measure premiums — Expected Shortfall (TVaR), Wang transform, or any custom distortion — to remove sensitivity to protected attributes. Based on Huang & Pesenti (2025), arXiv:2505.18895.
+
+The existing approach in this library (via `DiscriminationFreePrice` and `counterfactual_fairness`) operates at Stage 1: it modifies or marginalises the model's prediction to remove the protected attribute's influence. `MarginalFairnessPremium` operates at Stage 2: it accepts a fitted model that may use protected attributes for accuracy, and adjusts the final *distortion risk measure* output to be insensitive to those attributes at the margin. The correction is exact under the paper's L2-minimal weight adjustment — no iterative solver.
+
+This is the appropriate intervention when the insurer wants prediction accuracy from protected attributes but must ensure the final pricing decision cannot be shown to be *sensitive* to them — the test that matters for FCA Consumer Duty and Equality Act 2010 Section 19.
+
+```python
+import numpy as np
+from insurance_fairness import MarginalFairnessPremium, MarginalFairnessReport
+
+# Y: observed losses (n,)
+# D: protected attributes (n, m) — e.g. gender, ethnicity proxy
+# X: non-protected covariates (n, p)
+# model: fitted sklearn-compatible estimator, predict([D | X])
+
+mfp = MarginalFairnessPremium(
+    distortion='es_alpha',   # Expected Shortfall at tail level alpha
+    alpha=0.75,              # ES0.75 is a common actuarial risk loading
+)
+mfp.fit(Y_train, D_train, X_train, model=glm, protected_indices=[0])
+
+# Per-policyholder fair premium (distortion risk measure contribution)
+rho_fair = mfp.transform(Y_test, D_test, X_test)
+
+# Audit trail for FCA Consumer Duty sign-off
+report: MarginalFairnessReport = mfp.sensitivity_report()
+print(f"Baseline ES0.75: {report.rho_baseline:.4f}")
+print(f"Fair ES0.75:     {report.rho_fair:.4f}")
+print(f"Lift ratio:      {report.lift_ratio:.4f}")
+# Lift ratio near 1.0 = actuarially neutral correction
+```
+
+Three distortion risk measures are supported out of the box:
+
+| `distortion=` | What it is | `alpha` meaning |
+|---|---|---|
+| `'es_alpha'` | Expected Shortfall (TVaR) | Tail level, e.g. 0.75, 0.90 |
+| `'wang_lambda'` | Wang transform | Lambda parameter (>0 loads premium) |
+| `'expectation'` | Plain mean | Ignored |
+| callable | Custom `gamma(u)` function | Passed through as-is |
+
+The sensitivity report (`MarginalFairnessReport`) records the estimated marginal sensitivity of the risk measure to each protected attribute, the correction terms, and the lift ratio `rho_fair / rho_baseline`. Values close to zero for `sensitivities` indicate the risk measure was already marginally fair before correction.
+
+**Reference:** Huang, F. & Pesenti, S. M. (2025). Marginal Fairness: Fair Decision-Making under Risk Measures. arXiv:2505.18895.
+
 ## Fairness Criteria and Their Insurance Relevance
 
 The library implements three distinct criteria. They are not equivalent and cannot all be satisfied simultaneously when base rates differ across groups (Chouldechova, 2017).
@@ -439,6 +487,7 @@ The FCA has not prescribed a specific methodology. The academic framework underl
 - FCA Thematic Review TR24/2: General Insurance and Pure Protection Product Governance (2024).
 - FCA Evaluation Paper EP25/2: Our General Insurance Pricing Practices Remedies (2025).
 - Côté, M.-P., Côté, S. and Charpentier, A. (2025). Five premium benchmarks for proxy discrimination in insurance pricing.
+- Huang, F. & Pesenti, S. M. (2025). Marginal Fairness: Fair Decision-Making under Risk Measures. arXiv:2505.18895.
 
 ---
 
