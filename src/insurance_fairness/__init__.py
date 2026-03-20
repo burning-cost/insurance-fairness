@@ -47,6 +47,15 @@ D_proxy scalar, Shapley attribution, and per-policyholder vulnerability scores::
 
     from insurance_fairness.diagnostics import ProxyDiscriminationAudit
 
+v0.3.7 adds :class:`MulticalibrationAudit` — audit and correct pricing models
+for multicalibration fairness (Denuit, Michaelides & Trufin, 2026)::
+
+    from insurance_fairness import MulticalibrationAudit
+
+    audit = MulticalibrationAudit(n_bins=10, alpha=0.05)
+    report = audit.audit(y_true, y_pred, protected, exposure)
+    corrected = audit.correct(y_pred, protected, report, exposure)
+
 Quick start::
 
     import polars as pl
@@ -74,6 +83,9 @@ Discrimination in Insurance Pricing. European Journal of Operational Research.
 
 Bellamy et al. (2024). Multi-Objective Fairness Optimisation for Insurance
 Pricing Models. arXiv:2512.24747.
+
+Denuit, Michaelides & Trufin (2026). Multicalibration in Insurance Pricing.
+arXiv:2603.16317.
 """
 
 from insurance_fairness.audit import FairnessAudit, FairnessReport
@@ -86,6 +98,7 @@ from insurance_fairness.bias_metrics import (
     theil_index,
 )
 from insurance_fairness.counterfactual import counterfactual_fairness
+from insurance_fairness.multicalibration import MulticalibrationAudit, MulticalibrationReport
 from insurance_fairness.proxy_detection import (
     detect_proxies,
     mutual_information_scores,
@@ -114,6 +127,9 @@ __all__ = [
     "theil_index",
     # Counterfactual
     "counterfactual_fairness",
+    # Multicalibration
+    "MulticalibrationAudit",
+    "MulticalibrationReport",
     # Proxy detection
     "detect_proxies",
     "ProxyDetectionResult",
