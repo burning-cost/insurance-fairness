@@ -8,11 +8,11 @@
 
 > 💬 Questions or feedback? Start a [Discussion](https://github.com/burning-cost/insurance-fairness/discussions). Found it useful? A ⭐ helps others find it.
 
-**Your postcode rating factor is probably an ethnicity proxy. Here's how to prove it — and document it for the FCA.**
+Every UK insurer must demonstrate fair value under FCA Consumer Duty (PRIN 2A). insurance-fairness provides the statistical evidence.
 
-UK insurers face a genuine compliance obligation to demonstrate their pricing models do not discriminate against customers with protected characteristics. The FCA Consumer Duty (PRIN 2A, live July 2023) requires firms to monitor whether their products provide fair value for different groups of customers, and the FCA's multi-firm review (2024) found most insurers were doing this inadequately. The Equality Act 2010 Section 19 independently prohibits indirect discrimination through rating factors that act as proxies for protected characteristics.
+The FCA's Consumer Duty (PS22/9, live July 2023) requires firms to monitor whether their products deliver fair value for different groups of customers. The FCA's thematic review TR24/2 (August 2024) found most insurers' Fair Value Assessments were "high-level summaries with little substance" — and the FCA has since opened six Consumer Duty investigations, two of which directly involve insurers on fair value grounds. The compliance risk is live, not theoretical.
 
-The practical problem is well-documented. Citizens Advice (2022) found a £280/year ethnicity penalty in UK motor insurance in postcodes where more than 50% of residents are people of colour, estimated at £213m per year. The mechanism is straightforward: insurers use postcode as a rating factor; postcode correlates with ethnicity; the postcode effect on price therefore contains an ethnicity component that cannot be justified on pure risk grounds.
+The mechanism creating fair value failures is proxy discrimination. Your postcode rating factor is probably an ethnicity proxy: Citizens Advice (2022) estimated a £280/year ethnicity penalty in UK motor insurance, totalling £213m per year, driven by postcodes that encode protected-characteristic information without the insurer's pricing team ever modelling ethnicity directly. Proving — or disproving — that this is happening in your book is what proxy detection is for. The Equality Act 2010 Section 19 independently prohibits this as indirect discrimination.
 
 Every Python fairness library was built for binary classification or generic regression. None handles the multiplicative frequency/severity structure, exposure-weighted metrics, or the log-link world that pricing actuaries actually work in. This library fills that gap for the UK market.
 
@@ -301,7 +301,9 @@ The library does not bundle this data (it is large and updated quarterly). The j
 
 ## Regulatory Context
 
-**FCA Consumer Duty (PRIN 2A.4):** Firms must monitor and demonstrate fair value across groups of customers defined by protected characteristics. The `FairnessReport` output and its calibration by group metrics directly satisfy this monitoring requirement.
+**FCA Consumer Duty (PS22/9, PRIN 2A.4):** PS22/9 (published July 2022, live July 2023) set the final Consumer Duty rules requiring firms to deliver and monitor fair value for retail customers. PRIN 2A.4 specifically requires firms to assess and evidence fair value by customer group. The `FairnessReport` output and its calibration by group metrics directly satisfy this monitoring obligation.
+
+**FCA Thematic Review TR24/2 (August 2024):** TR24/2 reviewed product governance across 28 manufacturers and 39 distributors under Consumer Duty. The FCA found Fair Value Assessments were "high-level summaries with little substance or relevant information" — firms failed to identify value problems even where those were apparent in data, and lacked granularity in customer outcome analysis. The structured output from `FairnessAudit.run()` is designed to address exactly these failures: it produces documented, evidenced, factor-level analysis rather than qualitative summary.
 
 **Equality Act 2010, Section 19 (Indirect Discrimination):** A rating factor that puts persons sharing a protected characteristic at a particular disadvantage constitutes indirect discrimination unless justified as a proportionate means of achieving a legitimate aim. The proxy detection module identifies which factors are at risk of constituting indirect discrimination.
 
@@ -316,6 +318,7 @@ The FCA has not prescribed a specific methodology. The academic framework underl
 - Lindholm, Richman, Tsanakas, Wüthrich (2024). What is Fair? Proxy Discrimination vs. Demographic Disparities in Insurance Pricing. Scandinavian Actuarial Journal 2024(9).
 - Lindholm, Richman, Tsanakas, Wüthrich (2026). Sensitivity-Based Measures of Discrimination in Insurance Pricing. European Journal of Operational Research.
 - Citizens Advice (2022). Discriminatory Pricing: Exploring the Ethnicity Penalty in the Insurance Market.
+- FCA Consumer Duty Policy Statement PS22/9 (2022).
 - FCA Consumer Duty Finalised Guidance FG22/5 (2023).
 - FCA Multi-Firm Review: Outcomes Monitoring under the Consumer Duty (2024).
 - FCA Thematic Review TR24/2: General Insurance and Pure Protection Product Governance (2024).
@@ -387,7 +390,7 @@ The benchmark compares a standard manual check (pairwise Spearman correlation) a
 | annual_mileage | −0.0034 | 0.0000 | 0.0056 | 0.0031 | GREEN |
 | payment_method | 0.0094 | 0.0000 | 0.0038 | n/a | GREEN |
 
-**Manual Spearman check:** 0/6 factors flagged (all |r| < 0.25).  
+**Manual Spearman check:** 0/6 factors flagged (all |r| < 0.25).
 **Library proxy_r2 + MI:** 1/6 factors flagged (postcode_area RED).
 
 **Timing (n=20,000 policies, measured on Databricks serverless):**
