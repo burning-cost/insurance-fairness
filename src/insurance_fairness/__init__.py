@@ -72,6 +72,19 @@ estimated from proxies (Zhang, Liu & Shi, 2025)::
     fair_premium = audit.predict_fair_premium(X_new)
     report = audit.audit_report()
 
+v0.4.0 adds per-policyholder proxy vulnerability metrics from Côté et al. (2025):
+
+**insurance_fairness.proxy_vulnerability** — ProxyVulnerabilityScore,
+risk spread, parity cost, fairness range, and post-pricing implied propensity::
+
+    from insurance_fairness import (
+        ProxyVulnerabilityScore,
+        ProxyVulnerabilityResult,
+        PremiumSpectrum,
+        compute_post_pricing_metrics,
+        partition_by_proxy_vulnerability,
+    )
+
 Quick start::
 
     import polars as pl
@@ -105,6 +118,9 @@ arXiv:2603.16317.
 
 Zhang, Liu & Shi (2025). Discrimination-Free Insurance Pricing with Privatized
 Sensitive Attributes. arXiv:2504.11775.
+
+Côté, O., Côté, M.-P., and Charpentier, A. (2025). A Scalable Toolbox for
+Exposing Indirect Discrimination in Insurance Rates. CAS Working Paper.
 """
 
 from insurance_fairness.audit import FairnessAudit, FairnessReport
@@ -127,13 +143,20 @@ from insurance_fairness.proxy_detection import (
     ProxyDetectionResult,
     shap_proxy_scores,
 )
+from insurance_fairness.proxy_vulnerability import (
+    ProxyVulnerabilityScore,
+    ProxyVulnerabilityResult,
+    PremiumSpectrum,
+    compute_post_pricing_metrics,
+    partition_by_proxy_vulnerability,
+)
 from insurance_fairness.report import generate_markdown_report
 
 # Subpackages: import for side-effects / discoverability
 from insurance_fairness import optimal_transport  # noqa: F401
 from insurance_fairness import diagnostics  # noqa: F401
 
-__version__ = "0.3.8"
+__version__ = "0.4.0"
 __all__ = [
     # Core audit
     "FairnessAudit",
@@ -160,6 +183,12 @@ __all__ = [
     "partial_correlation",
     "proxy_r2_scores",
     "shap_proxy_scores",
+    # Proxy vulnerability (v0.4.0)
+    "ProxyVulnerabilityScore",
+    "ProxyVulnerabilityResult",
+    "PremiumSpectrum",
+    "compute_post_pricing_metrics",
+    "partition_by_proxy_vulnerability",
     # Reporting
     "generate_markdown_report",
     # Subpackages (import from subpackage directly)
