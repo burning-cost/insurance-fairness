@@ -157,84 +157,117 @@ No rating factors flagged with proxy concerns.
 
 ## ProxyVulnerabilityScore and ParityCost
 
-**New in v0.4.0.** Per-policyholder proxy vulnerability quantification and the portfolio-level sterling cost of eliminating proxy discrimination, based on Côté, Côté and Charpentier (2025).
+**New in v0.4.0.** Per-policyholder proxy vulnerability quantification and the portfolio-level sterling cost of proxy discrimination, based on Côté, Côté and Charpentier (2025).
 
-`ProxyVulnerabilityScore` gives each policyholder a score in [0, 1]:
+The five Côté et al. premium benchmarks are:
 
-    v_i = |h_i - h^{aware}_i| / h_i
+| Symbol | Name | Description |
+|--------|------|-------------|
+| µ_U | Unaware | Current model output (no protected attribute D) |
+| µ_A | Aware | Marginalised aware: averages over D distribution |
+| µ_B | Best-estimate | Fitted with D as a feature, using each policyholder's actual D |
+| µ_H | Hyperaware | Conditions on D directly |
+| µ_C | Corrective | OT-corrected — moves distribution to match the reference group |
 
-where h_i is the current (unaware) premium and h^{aware}_i is the marginalised aware premium — what the policyholder would pay if the proxy effect were removed. A score of 0.08 means the policyholder's premium is 8% away from their discrimination-free price.
-
-`ParityCost` aggregates this into a single £/year figure: the total premium overcharge to disadvantaged policyholders if the proxy effect were corrected.
+`ProxyVulnerabilityScore` requires pre-computed unaware and aware premium columns. Compute them from your pricing model first:
 
 ```python
 import numpy as np
 import polars as pl
 from catboost import CatBoostRegressor
-from insurance_fairness import ProxyVulnerabilityScore, ParityCost
+from insurance_fairness import ProxyVulnerabilityScore
 
-# Assume df is a Polars DataFrame with rating factors and a postcode_area column.
-# model is a CatBoostRegressor fitted WITHOUT postcode_area.
-rng = np.random.default_rng(0)
-n = 2_000
+rng = np.random.default_rng(42)
+n = 5_000
 
-postcode_area = rng.choice(["SW1", "E1", "M1", "B1", "LS1"], size=n)
+gender        = rng.choice([0, 1], size=n)  # 0=F, 1=M
 vehicle_age   = rng.integers(1, 15, n).astype(float)
-driver_age    = rng.integers(21, 75, n).astype(float)
 ncd_years     = rng.integers(0, 9, n).astype(float)
+driver_age    = rng.integers(21, 75, n).astype(float)
 exposure      = rng.uniform(0.3, 1.0, n)
 
-# True claim cost: postcode encodes a latent group effect (the proxy)
 claim_cost = np.exp(
     4.5
     + 0.04 * vehicle_age
-    - 0.01 * ncd_years
-    + 0.12 * (postcode_area == "SW1").astype(float)  # injected proxy effect
+    - 0.008 * ncd_years
+    + 0.08 * gender.astype(float)   # injected proxy effect
     + rng.normal(0, 0.35, n)
 )
 
+# Unaware model: fitted WITHOUT gender
+X_unaware = np.column_stack([vehicle_age, ncd_years, driver_age])
+model_unaware = CatBoostRegressor(iterations=200, verbose=0)
+model_unaware.fit(X_unaware, claim_cost / exposure, sample_weight=exposure)
+mu_U = model_unaware.predict(X_unaware)
+
+# Aware model: fitted WITH gender; aware premium = E[predict | X, average over D]
+X_aware = np.column_stack([vehicle_age, ncd_years, driver_age, gender.astype(float)])
+model_aware = CatBoostRegressor(iterations=200, verbose=0)
+model_aware.fit(X_aware, claim_cost / exposure, sample_weight=exposure)
+
+# Marginalise: average over D=0 and D=1 for each policyholder
+X_d0 = X_aware.copy(); X_d0[:, -1] = 0.0
+X_d1 = X_aware.copy(); X_d1[:, -1] = 1.0
+p_male = gender.mean()   # reference distribution
+mu_A = (1 - p_male) * model_aware.predict(X_d0) + p_male * model_aware.predict(X_d1)
+
 df = pl.DataFrame({
-    "postcode_area": postcode_area,
-    "vehicle_age":   vehicle_age,
-    "driver_age":    driver_age,
-    "ncd_years":     ncd_years,
-    "exposure":      exposure,
+    "gender":      gender,
+    "vehicle_age": vehicle_age,
+    "ncd_years":   ncd_years,
+    "driver_age":  driver_age,
+    "exposure":    exposure,
+    "mu_unaware":  mu_U,
+    "mu_aware":    mu_A,
 })
 
-# Unaware model: fitted WITHOUT postcode_area
-X_unaware = np.column_stack([vehicle_age, driver_age, ncd_years])
-model = CatBoostRegressor(iterations=150, verbose=0)
-model.fit(X_unaware, claim_cost / exposure, sample_weight=exposure)
-
-# Score each policyholder's vulnerability to the postcode proxy
-scorer = ProxyVulnerabilityScore(model=model, sensitive_col="postcode_area")
-result = scorer.fit(X=df, exposure_col="exposure")
+# Per-policyholder proxy vulnerability
+scorer = ProxyVulnerabilityScore(
+    df=df,
+    sensitive_col="gender",
+    unaware_col="mu_unaware",
+    aware_col="mu_aware",
+    exposure_col="exposure",
+)
+result = scorer.compute()
 
 print(result.summary())
-# ProxyVulnerabilityScore — postcode_area
-#   Policies: 2,000
-#   Mean vulnerability:   0.0312
-#   Median vulnerability: 0.0241
-#   Max vulnerability:    0.1847
-#   RAG: 48 RED / 213 AMBER / 1739 GREEN
+# Proxy Vulnerability Summary
+#   Sensitive attribute: gender
+#   N policies: 5,000
+#
+#   D = 0:
+#     N policies         : 2,493
+#     Mean PV            : -1.84
+#     % overcharged      : 43.2%
+#     TVaR_95 overcharge : 22.14
+#   D = 1:
+#     N policies         : 2,507
+#     Mean PV            : 1.83
+#     % overcharged      : 55.1%
+#     TVaR_95 overcharge : 25.31
 
-# Monetary cost of the proxy discrimination
-cost = ParityCost.from_vulnerability(result, exposure=exposure)
-print(cost.summary())
-# ParityCost
-#   Parity cost (overcharged):    £  14,820.43/year
-#   Parity benefit (undercharged):£   9,311.07/year
-#   Net parity cost:              £   5,509.36/year
-#   Cost as % of portfolio premium:  4.21%
-#   Policyholders overcharged:    1,087
-#   Policyholders undercharged:      913
+# Per-policyholder DataFrame
+local = result.to_polars()
+# columns: policy_id, sensitive_value, unaware, aware, proxy_vulnerability,
+#          proxy_vulnerability_pct, risk_spread, parity_cost, fairness_range, rag
 
-# Per-policyholder scores as a Polars DataFrame
-scores_df = result.to_polars()
-# columns: h_unaware, h_aware, vulnerability, signed_vulnerability, rag
+# ParityCost — requires the corrective premium (optional; proxy_vulnerability is always available)
+# parity_cost_per_policy is already in result.local_metrics["parity_cost"]
+# if corrective_col was supplied. Without it, use proxy_vulnerability directly:
+overcharge_mask = result.local_metrics["proxy_vulnerability"] > 0
+total_parity_cost = float(
+    (result.local_metrics["proxy_vulnerability"]
+     .filter(overcharge_mask)
+     * df["exposure"].filter(overcharge_mask))
+    .sum()
+)
+print(f"Parity cost (overcharged policyholders): £{total_parity_cost:,.0f}/year")
 ```
 
-The signed vulnerability is directional: positive means the policyholder is overcharged relative to their discrimination-free price (h_unaware > h_aware), negative means undercharged. Under most premium-neutral correction schemes, the net parity cost is near zero because overcharges and undercharges approximately cancel at the portfolio level.
+The `proxy_vulnerability` column is `mu_unaware - mu_aware`: positive means the policyholder pays more than the discrimination-free price. `proxy_vulnerability_pct` normalises by the aware premium.
+
+For full parity cost computation using the corrective (OT-corrected) premium, pass `corrective_col` and the result will include a `parity_cost` column per policyholder. See `insurance_fairness.optimal_transport` for computing the corrective premium.
 
 
 ## Modules

@@ -72,17 +72,18 @@ estimated from proxies (Zhang, Liu & Shi, 2025)::
     fair_premium = audit.predict_fair_premium(X_new)
     report = audit.audit_report()
 
-v0.4.0 adds :class:`ProxyVulnerabilityScore` and :class:`ParityCost` —
-per-policyholder proxy vulnerability quantification and the portfolio-level
-£ cost of eliminating proxy discrimination (Côté, Côté & Charpentier, 2025)::
+v0.4.0 adds per-policyholder proxy vulnerability metrics from Côté et al. (2025):
 
-    from insurance_fairness import ProxyVulnerabilityScore, ParityCost
+**insurance_fairness.proxy_vulnerability** — ProxyVulnerabilityScore,
+risk spread, parity cost, fairness range, and post-pricing implied propensity::
 
-    scorer = ProxyVulnerabilityScore(model=my_model, sensitive_col="postcode_area")
-    result = scorer.fit(X=df, exposure_col="exposure")
-
-    cost = ParityCost.from_vulnerability(result, exposure=exposure_arr)
-    print(f"Parity cost: £{cost.parity_cost_total:,.0f}/year")
+    from insurance_fairness import (
+        ProxyVulnerabilityScore,
+        ProxyVulnerabilityResult,
+        PremiumSpectrum,
+        compute_post_pricing_metrics,
+        partition_by_proxy_vulnerability,
+    )
 
 Quick start::
 
@@ -118,8 +119,8 @@ arXiv:2603.16317.
 Zhang, Liu & Shi (2025). Discrimination-Free Insurance Pricing with Privatized
 Sensitive Attributes. arXiv:2504.11775.
 
-Côté, M.-P., Côté, S. and Charpentier, A. (2025). Five premium benchmarks
-for proxy discrimination in insurance pricing.
+Côté, O., Côté, M.-P., and Charpentier, A. (2025). A Scalable Toolbox for
+Exposing Indirect Discrimination in Insurance Rates. CAS Working Paper.
 """
 
 from insurance_fairness.audit import FairnessAudit, FairnessReport
@@ -144,8 +145,10 @@ from insurance_fairness.proxy_detection import (
 )
 from insurance_fairness.proxy_vulnerability import (
     ProxyVulnerabilityScore,
-    ParityCost,
-    VulnerabilityResult,
+    ProxyVulnerabilityResult,
+    PremiumSpectrum,
+    compute_post_pricing_metrics,
+    partition_by_proxy_vulnerability,
 )
 from insurance_fairness.report import generate_markdown_report
 
@@ -180,10 +183,12 @@ __all__ = [
     "partial_correlation",
     "proxy_r2_scores",
     "shap_proxy_scores",
-    # Proxy vulnerability and parity cost (v0.4.0)
+    # Proxy vulnerability (v0.4.0)
     "ProxyVulnerabilityScore",
-    "ParityCost",
-    "VulnerabilityResult",
+    "ProxyVulnerabilityResult",
+    "PremiumSpectrum",
+    "compute_post_pricing_metrics",
+    "partition_by_proxy_vulnerability",
     # Reporting
     "generate_markdown_report",
     # Subpackages (import from subpackage directly)
