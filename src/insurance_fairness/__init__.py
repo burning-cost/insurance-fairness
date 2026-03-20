@@ -85,6 +85,22 @@ risk spread, parity cost, fairness range, and post-pricing implied propensity::
         partition_by_proxy_vulnerability,
     )
 
+v0.5.0 adds :class:`MarginalFairnessPremium` — Stage 2 fairness correction for
+distortion risk measure premiums (Huang & Pesenti, 2025, arXiv:2505.18895).
+Adjusts Expected Shortfall, Wang transform, or custom distortion risk measures
+to be marginally fair with respect to protected attributes. Closed-form
+correction with no iterative solver required::
+
+    from insurance_fairness import MarginalFairnessPremium, MarginalFairnessReport
+
+    mfp = MarginalFairnessPremium(distortion='es_alpha', alpha=0.75)
+    mfp.fit(Y_train, D_train, X_train, model=glm, protected_indices=[0])
+    rho_fair = mfp.transform(Y_test, D_test, X_test)
+
+    report = mfp.sensitivity_report()
+    print(f"Baseline ES0.75: {report.rho_baseline:.4f}")
+    print(f"Fair ES0.75:     {report.rho_fair:.4f}")
+
 Quick start::
 
     import polars as pl
@@ -121,6 +137,9 @@ Sensitive Attributes. arXiv:2504.11775.
 
 Côté, O., Côté, M.-P., and Charpentier, A. (2025). A Scalable Toolbox for
 Exposing Indirect Discrimination in Insurance Rates. CAS Working Paper.
+
+Huang, F. & Pesenti, S. M. (2025). Marginal Fairness: Fair Decision-Making
+under Risk Measures. arXiv:2505.18895.
 """
 
 from insurance_fairness.audit import FairnessAudit, FairnessReport
@@ -133,6 +152,7 @@ from insurance_fairness.bias_metrics import (
     theil_index,
 )
 from insurance_fairness.counterfactual import counterfactual_fairness
+from insurance_fairness.marginal_fairness import MarginalFairnessPremium, MarginalFairnessReport
 from insurance_fairness.multicalibration import MulticalibrationAudit, MulticalibrationReport
 from insurance_fairness.privatized_audit import PrivatizedFairnessAudit, PrivatizedAuditResult
 from insurance_fairness.proxy_detection import (
@@ -156,7 +176,7 @@ from insurance_fairness.report import generate_markdown_report
 from insurance_fairness import optimal_transport  # noqa: F401
 from insurance_fairness import diagnostics  # noqa: F401
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __all__ = [
     # Core audit
     "FairnessAudit",
@@ -170,6 +190,9 @@ __all__ = [
     "theil_index",
     # Counterfactual
     "counterfactual_fairness",
+    # Marginal fairness (v0.5.0)
+    "MarginalFairnessPremium",
+    "MarginalFairnessReport",
     # Multicalibration
     "MulticalibrationAudit",
     "MulticalibrationReport",
