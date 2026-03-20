@@ -155,6 +155,88 @@ Protected characteristic: gender
 No rating factors flagged with proxy concerns.
 ```
 
+## ProxyVulnerabilityScore and ParityCost
+
+**New in v0.4.0.** Per-policyholder proxy vulnerability quantification and the portfolio-level sterling cost of eliminating proxy discrimination, based on Côté, Côté and Charpentier (2025).
+
+`ProxyVulnerabilityScore` gives each policyholder a score in [0, 1]:
+
+    v_i = |h_i - h^{aware}_i| / h_i
+
+where h_i is the current (unaware) premium and h^{aware}_i is the marginalised aware premium — what the policyholder would pay if the proxy effect were removed. A score of 0.08 means the policyholder's premium is 8% away from their discrimination-free price.
+
+`ParityCost` aggregates this into a single £/year figure: the total premium overcharge to disadvantaged policyholders if the proxy effect were corrected.
+
+```python
+import numpy as np
+import polars as pl
+from catboost import CatBoostRegressor
+from insurance_fairness import ProxyVulnerabilityScore, ParityCost
+
+# Assume df is a Polars DataFrame with rating factors and a postcode_area column.
+# model is a CatBoostRegressor fitted WITHOUT postcode_area.
+rng = np.random.default_rng(0)
+n = 2_000
+
+postcode_area = rng.choice(["SW1", "E1", "M1", "B1", "LS1"], size=n)
+vehicle_age   = rng.integers(1, 15, n).astype(float)
+driver_age    = rng.integers(21, 75, n).astype(float)
+ncd_years     = rng.integers(0, 9, n).astype(float)
+exposure      = rng.uniform(0.3, 1.0, n)
+
+# True claim cost: postcode encodes a latent group effect (the proxy)
+claim_cost = np.exp(
+    4.5
+    + 0.04 * vehicle_age
+    - 0.01 * ncd_years
+    + 0.12 * (postcode_area == "SW1").astype(float)  # injected proxy effect
+    + rng.normal(0, 0.35, n)
+)
+
+df = pl.DataFrame({
+    "postcode_area": postcode_area,
+    "vehicle_age":   vehicle_age,
+    "driver_age":    driver_age,
+    "ncd_years":     ncd_years,
+    "exposure":      exposure,
+})
+
+# Unaware model: fitted WITHOUT postcode_area
+X_unaware = np.column_stack([vehicle_age, driver_age, ncd_years])
+model = CatBoostRegressor(iterations=150, verbose=0)
+model.fit(X_unaware, claim_cost / exposure, sample_weight=exposure)
+
+# Score each policyholder's vulnerability to the postcode proxy
+scorer = ProxyVulnerabilityScore(model=model, sensitive_col="postcode_area")
+result = scorer.fit(X=df, exposure_col="exposure")
+
+print(result.summary())
+# ProxyVulnerabilityScore — postcode_area
+#   Policies: 2,000
+#   Mean vulnerability:   0.0312
+#   Median vulnerability: 0.0241
+#   Max vulnerability:    0.1847
+#   RAG: 48 RED / 213 AMBER / 1739 GREEN
+
+# Monetary cost of the proxy discrimination
+cost = ParityCost.from_vulnerability(result, exposure=exposure)
+print(cost.summary())
+# ParityCost
+#   Parity cost (overcharged):    £  14,820.43/year
+#   Parity benefit (undercharged):£   9,311.07/year
+#   Net parity cost:              £   5,509.36/year
+#   Cost as % of portfolio premium:  4.21%
+#   Policyholders overcharged:    1,087
+#   Policyholders undercharged:      913
+
+# Per-policyholder scores as a Polars DataFrame
+scores_df = result.to_polars()
+# columns: h_unaware, h_aware, vulnerability, signed_vulnerability, rag
+```
+
+The signed vulnerability is directional: positive means the policyholder is overcharged relative to their discrimination-free price (h_unaware > h_aware), negative means undercharged. Under most premium-neutral correction schemes, the net parity cost is near zero because overcharges and undercharges approximately cancel at the portfolio level.
+
+
 ## Modules
 
 ### `FairnessAudit` and `FairnessReport`
@@ -323,6 +405,7 @@ The FCA has not prescribed a specific methodology. The academic framework underl
 - FCA Multi-Firm Review: Outcomes Monitoring under the Consumer Duty (2024).
 - FCA Thematic Review TR24/2: General Insurance and Pure Protection Product Governance (2024).
 - FCA Evaluation Paper EP25/2: Our General Insurance Pricing Practices Remedies (2025).
+- Côté, M.-P., Côté, S. and Charpentier, A. (2025). Five premium benchmarks for proxy discrimination in insurance pricing.
 
 ---
 
