@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green)]()
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/burning-cost/insurance-fairness/blob/main/notebooks/quickstart.ipynb)
 
-> 💬 Questions or feedback? Start a [Discussion](https://github.com/burning-cost/insurance-fairness/discussions). Found it useful? A ⭐ helps others find it.
+> Questions or feedback? Start a [Discussion](https://github.com/burning-cost/insurance-fairness/discussions). Found it useful? A star helps others find it.
 
 Every UK insurer must demonstrate fair value under FCA Consumer Duty (PRIN 2A). insurance-fairness provides the statistical evidence.
 
@@ -31,7 +31,7 @@ Benchmarked on synthetic UK motor data (50,000 policies) with a known postcode-e
 
 The library surfaces proxy concerns that a direct A/E comparison by group will miss. A factor with a postcode proxy R-squared > 0.10 is contributing discriminatory variation to prices — even when A/E by group looks flat.
 
-▶ [Run on Databricks](https://github.com/burning-cost/burning-cost-examples/blob/main/notebooks/fairness_audit_demo.py)
+[Run on Databricks](https://github.com/burning-cost/burning-cost-examples/blob/main/notebooks/fairness_audit_demo.py)
 
 ---
 
@@ -44,13 +44,14 @@ The library surfaces proxy concerns that a direct A/E comparison by group will m
 - Runs counterfactual fairness tests by flipping protected characteristics and measuring premium impact
 - Produces structured Markdown audit reports with explicit FCA regulatory mapping, suitable for pricing committee packs and FCA file reviews
 - Corrects distortion risk measure premiums (Expected Shortfall, Wang transform) to be marginally fair with respect to protected attributes — closed-form, no iterative solver (Huang & Pesenti, 2025)
+- Recovers the full action-and-outcome fairness Pareto front via lexicographic Tchebycheff scalarisation, addressing FCA Consumer Duty Outcome 4 (Price and Value) (Bian et al., 2026)
 
 ## Installation
 
 ```bash
 uv add insurance-fairness
 # or
-uv add insurance-fairness
+pip install insurance-fairness
 ```
 
 **Dependencies:** polars, catboost, scikit-learn, scipy, numpy, jinja2, pyarrow
@@ -164,11 +165,11 @@ The five Côté et al. premium benchmarks are:
 
 | Symbol | Name | Description |
 |--------|------|-------------|
-| µ_U | Unaware | Current model output (no protected attribute D) |
-| µ_A | Aware | Marginalised aware: averages over D distribution |
-| µ_B | Best-estimate | Fitted with D as a feature, using each policyholder's actual D |
-| µ_H | Hyperaware | Conditions on D directly |
-| µ_C | Corrective | OT-corrected — moves distribution to match the reference group |
+| mu_U | Unaware | Current model output (no protected attribute D) |
+| mu_A | Aware | Marginalised aware: averages over D distribution |
+| mu_B | Best-estimate | Fitted with D as a feature, using each policyholder's actual D |
+| mu_H | Hyperaware | Conditions on D directly |
+| mu_C | Corrective | OT-corrected — moves distribution to match the reference group |
 
 `ProxyVulnerabilityScore` requires pre-computed unaware and aware premium columns. Compute them from your pricing model first:
 
@@ -252,18 +253,6 @@ print(result.summary())
 local = result.to_polars()
 # columns: policy_id, sensitive_value, unaware, aware, proxy_vulnerability,
 #          proxy_vulnerability_pct, risk_spread, parity_cost, fairness_range, rag
-
-# ParityCost — requires the corrective premium (optional; proxy_vulnerability is always available)
-# parity_cost_per_policy is already in result.local_metrics["parity_cost"]
-# if corrective_col was supplied. Without it, use proxy_vulnerability directly:
-overcharge_mask = result.local_metrics["proxy_vulnerability"] > 0
-total_parity_cost = float(
-    (result.local_metrics["proxy_vulnerability"]
-     .filter(overcharge_mask)
-     * df["exposure"].filter(overcharge_mask))
-    .sum()
-)
-print(f"Parity cost (overcharged policyholders): £{total_parity_cost:,.0f}/year")
 ```
 
 The `proxy_vulnerability` column is `mu_unaware - mu_aware`: positive means the policyholder pays more than the discrimination-free price. `proxy_vulnerability_pct` normalises by the aware premium.
@@ -423,6 +412,128 @@ The sensitivity report (`MarginalFairnessReport`) records the estimated marginal
 
 **Reference:** Huang, F. & Pesenti, S. M. (2025). Marginal Fairness: Fair Decision-Making under Risk Measures. arXiv:2505.18895.
 
+### `double_fairness`
+
+**New in v0.6.0.** Joint action and outcome Pareto optimisation — the first tool in this library that addresses FCA Consumer Duty Outcome 4 (Price and Value) directly, not just point-of-quoting fairness. Based on Bian, Wang, Shi, Qi (2026), arXiv:2601.19186.
+
+**The problem it solves.** Every other tool in this library audits action fairness: does the pricing model discriminate at the point of quoting? None of them ask whether the pricing decision produces equivalent financial outcomes for protected groups after the policy is live. The FCA Consumer Duty requires both.
+
+The key empirical result from the Bian et al. paper: on Belgian motor TPLI data (n=18,276), equalising premiums across gender (Delta_1=0) did NOT equalise welfare outcomes (Delta_2 remained large). A firm auditing only for equal treatment at quoting may still fail Consumer Duty.
+
+**The two fairness dimensions:**
+
+| Metric | Notation | What it measures | FCA obligation |
+|--------|----------|-----------------|----------------|
+| Action fairness | Delta_1 | Policy assigns systematically different premium bands to groups with the same risk profile | Current FCA expectation: no premium discrimination at quoting |
+| Outcome fairness | Delta_2 | Expected loss ratio (or welfare) differs across groups under the policy | Consumer Duty Outcome 4: product delivers equivalent value |
+
+**The algorithm.** `DoubleFairnessAudit` sweeps K alpha weights across (0,1) using lexicographic Tchebycheff scalarisation. For each alpha, it runs two optimisation stages:
+
+- Stage 1: minimise max{alpha * Delta_1, (1-alpha) * Delta_2} — find the Tchebycheff-optimal policy for this action/outcome balance
+- Stage 2: among Stage 1 near-optimal policies, minimise total unfairness Delta_1 + Delta_2 — refine to minimise aggregate harm
+
+The selected operating point is the Stage 2 solution with highest estimated revenue (V_hat). The full Pareto front is the auditable evidence of the trade-off considered.
+
+Why Tchebycheff rather than linear weighting? Linear scalarisation cannot recover Pareto-optimal policies when the objective space is non-convex — which it generically is for this problem. Tchebycheff scalarisation provably recovers the full Pareto set (Proposition 3 in the paper).
+
+```python
+import numpy as np
+from insurance_fairness import DoubleFairnessAudit
+
+rng = np.random.default_rng(42)
+n = 2000
+p = 8
+
+# Features: motor rating factors excluding protected characteristic
+X = np.column_stack([
+    rng.uniform(1, 15, n),   # vehicle_age
+    rng.uniform(21, 75, n),  # driver_age
+    rng.integers(0, 9, n),   # ncd_years
+    rng.normal(0, 1, (n, p - 3)),
+])
+
+# Protected group: S=0 (female), S=1 (male)
+S = rng.binomial(1, 0.5, n)
+
+# Primary outcome: pure premium (company revenue)
+y_premium = 200 + 50 * X[:, 0] + 30 * S + rng.normal(0, 10, n)
+
+# Fairness outcome: loss ratio (claims / premium)
+# Group differential: females ~0.70, males ~0.90 — systematic outcome gap
+y_loss_ratio = np.clip(0.70 + 0.20 * S + 0.05 * X[:, 1] + rng.normal(0, 0.1, n), 0, None)
+
+# Run the audit
+audit = DoubleFairnessAudit(
+    n_alphas=20,        # K Pareto points to compute
+    random_state=42,
+)
+audit.fit(
+    X,
+    y_primary=y_premium,
+    y_fairness=y_loss_ratio,
+    S=S,
+)
+
+result = audit.audit()
+print(result.summary())
+# Double Fairness Pareto Front
+# ====================================================================
+# Fairness notion: equal_opportunity  |  n = 2000  |  kappa = 0.04116
+# Outcome model:   Ridge
+# --------------------------------------------------------------------
+#  alpha      V_hat     Delta_1    Delta_2  selected
+# --------------------------------------------------------------------
+#  0.048    200.543  0.000413  0.002218
+#  0.095    199.821  0.000031  0.001944
+#    ...
+#  0.952    198.103  0.000012  0.004819  <--
+# ====================================================================
+
+# FCA Consumer Duty evidence pack section
+print(audit.report())
+
+# Visual Pareto front: value vs action fairness, value vs outcome fairness
+fig = audit.plot_pareto()
+fig.savefig("double_fairness_pareto.png", dpi=150, bbox_inches="tight")
+```
+
+**Fairness outcome choices.** Pass any of these as `y_fairness`:
+
+| `y_fairness` | Interpretation | FCA relevance |
+|---|---|---|
+| `loss_ratio = claims / premium` | Actuarial balance per group | Cross-subsidy detection; most meaningful for UK motor |
+| `-premium` | Customer welfare (paper's default) | Price and Value outcome |
+| `claims_indicator` | Claims probability by group | Service outcome fairness |
+
+Loss ratio is recommended for UK motor pricing. A group with systematic loss_ratio > 1 is being undercharged (or has systematically worse claims experience at the same premium). The Pareto front then answers: how much revenue efficiency must we sacrifice to equalise loss ratios across groups?
+
+**Output: `DoubleFairnessResult`.** The result dataclass contains the full Pareto front and the selected operating point:
+
+```python
+result.pareto_alphas    # (K,) — alpha weights swept
+result.pareto_V         # (K,) — V_hat (expected revenue) at each point
+result.pareto_delta1    # (K,) — Delta_1 (action fairness violation)
+result.pareto_delta2    # (K,) — Delta_2 (outcome fairness violation)
+result.pareto_theta     # (K, p) — optimal policy parameters
+
+result.selected_alpha   # alpha at selected operating point
+result.selected_delta1  # action fairness violation at selected point
+result.selected_delta2  # outcome fairness violation at selected point
+result.selected_V       # expected revenue at selected point
+
+result.summary()        # plain-text Pareto front table
+result.to_dict()        # JSON-serialisable — store in model review database
+```
+
+**Limitations to document in your evidence pack:**
+
+1. Binary action: the `A in {0, 1}` assumption (high-risk band vs not) simplifies continuous pricing. In practice, run the audit at your chosen rating threshold.
+2. No doubly-robust estimation: nuisance models use outcome regression only. If r_hat or f_hat are misspecified, Delta estimates are biased. Consider k-fold cross-fitting for robustness.
+3. Overlap assumption: requires both groups across the feature space. Groups with fewer than 50 observations trigger a warning; Delta_2 estimates will be unreliable.
+4. Parametric kappa: the default kappa = sqrt(log(n)/n) assumes parametric nuisance models (Ridge). For gradient boosted trees, set kappa explicitly.
+
+**Reference:** Bian, Z., Wang, L., Shi, C., Qi, Z. (2026). Double Fairness Policy Learning: Integrating Action Fairness and Outcome Fairness in Decision-making. arXiv:2601.19186v2.
+
 ## Fairness Criteria and Their Insurance Relevance
 
 The library implements three distinct criteria. They are not equivalent and cannot all be satisfied simultaneously when base rates differ across groups (Chouldechova, 2017).
@@ -432,6 +543,8 @@ The library implements three distinct criteria. They are not equivalent and cann
 **Demographic parity** — equal average prices across groups. Not required by the Equality Act (which allows risk-based differences), but flagged because large disparities warrant investigation. Reported in log-space, which is the natural metric for multiplicative pricing models.
 
 **Counterfactual fairness** — premiums do not change when the protected characteristic is flipped. The strictest criterion. Appropriate for characteristics that are direct model inputs and that the regulator prohibits as rating factors (e.g. sex in motor insurance post-Test-Achats).
+
+**Double fairness (action + outcome)** — `DoubleFairnessAudit` adds the fourth dimension: do the pricing decisions produce equivalent outcomes across groups? This is what Consumer Duty Outcome 4 actually asks for, and it is independent of the other three. A model can satisfy all three classical criteria and still fail outcome fairness if the underlying claims distributions differ systematically by group.
 
 ## Proxy Detection Methodology
 
@@ -488,6 +601,7 @@ The FCA has not prescribed a specific methodology. The academic framework underl
 - FCA Evaluation Paper EP25/2: Our General Insurance Pricing Practices Remedies (2025).
 - Côté, M.-P., Côté, S. and Charpentier, A. (2025). Five premium benchmarks for proxy discrimination in insurance pricing.
 - Huang, F. & Pesenti, S. M. (2025). Marginal Fairness: Fair Decision-Making under Risk Measures. arXiv:2505.18895.
+- Bian, Z., Wang, L., Shi, C., Qi, Z. (2026). Double Fairness Policy Learning: Integrating Action Fairness and Outcome Fairness in Decision-making. arXiv:2601.19186v2.
 
 ---
 
@@ -500,8 +614,9 @@ Demonstrated on synthetic UK motor data (50,000 policies) with a known fairness 
 - Counterfactual fairness test: flips postcode/proxy values and measures premium impact on the same underlying risk
 - Structured Markdown audit report with explicit FCA Consumer Duty (PRIN 2A) and Equality Act 2010 Section 19 regulatory mapping, suitable for pricing committee packs and FCA file reviews
 - Pareto optimisation notebook demonstrates the fairness-accuracy trade-off curve: how much predictive performance is lost at each level of fairness constraint
+- Double fairness audit: recovers action + outcome Pareto front via Tchebycheff scalarisation, producing FCA Consumer Duty Outcome 4 evidence
 
-**When to use:** Before any model goes to production pricing, and at regular intervals thereafter. The FCA's 2024 multi-firm review found most insurers were auditing inadequately. An audit that cannot answer "does this factor act as an ethnicity proxy?" is not sufficient under Consumer Duty.
+**When to use:** Before any model goes to production pricing, and at regular intervals thereafter. The FCA's 2024 multi-firm review found most insurers were auditing inadequately. An audit that cannot answer "does this factor act as an ethnicity proxy?" is not sufficient under Consumer Duty. An audit that cannot answer "do our policyholders experience equivalent outcomes?" does not satisfy Consumer Duty Outcome 4.
 
 ## Other Burning Cost libraries
 
@@ -536,23 +651,23 @@ Demonstrated on synthetic UK motor data (50,000 policies) with a known fairness 
 | [insurance-governance](https://github.com/burning-cost/insurance-governance) | PRA SS1/23 model validation reports |
 | [insurance-monitoring](https://github.com/burning-cost/insurance-monitoring) | Model monitoring: PSI, A/E ratios, Gini drift test |
 
-[All libraries and blog posts →](https://burning-cost.github.io)
+[All libraries and blog posts](https://burning-cost.github.io)
 
 ---
 
 ## Benchmark: Proxy discrimination detection
 
-20,000 synthetic UK motor policies with a known postcode–ethnicity proxy structure. London postcode areas are assigned a diversity score of ~0.70, outer cities ~0.40, and rural areas ~0.20. Six rating factors are tested: postcode_area, vehicle_group, ncd_years, age_band, annual_mileage, payment_method. The protected attribute (diversity score) is never given to the model — only present for detection.
+20,000 synthetic UK motor policies with a known postcode-ethnicity proxy structure. London postcode areas are assigned a diversity score of ~0.70, outer cities ~0.40, and rural areas ~0.20. Six rating factors are tested: postcode_area, vehicle_group, ncd_years, age_band, annual_mileage, payment_method. The protected attribute (diversity score) is never given to the model — only present for detection.
 
-The benchmark compares a standard manual check (pairwise Spearman correlation) against the library's three-method approach (proxy R², mutual information, SHAP proxy scores).
+The benchmark compares a standard manual check (pairwise Spearman correlation) against the library's three-method approach (proxy R2, mutual information, SHAP proxy scores).
 
-| Factor | Spearman r (manual) | Proxy R² (library) | MI (nats) | SHAP proxy score | Library status |
+| Factor | Spearman r (manual) | Proxy R2 (library) | MI (nats) | SHAP proxy score | Library status |
 |--------|--------------------|--------------------|-----------|-----------------|----------------|
 | postcode_area | 0.0634 | **0.7767** | **0.8169** | **0.7513** | RED |
 | vehicle_group | 0.0160 | 0.0000 | 0.0019 | 0.0040 | GREEN |
-| ncd_years | −0.0050 | 0.0000 | 0.0063 | 0.0116 | GREEN |
-| age_band | −0.0045 | 0.0000 | 0.0025 | 0.0329 | GREEN |
-| annual_mileage | −0.0034 | 0.0000 | 0.0056 | 0.0031 | GREEN |
+| ncd_years | -0.0050 | 0.0000 | 0.0063 | 0.0116 | GREEN |
+| age_band | -0.0045 | 0.0000 | 0.0025 | 0.0329 | GREEN |
+| annual_mileage | -0.0034 | 0.0000 | 0.0056 | 0.0031 | GREEN |
 | payment_method | 0.0094 | 0.0000 | 0.0038 | n/a | GREEN |
 
 **Manual Spearman check:** 0/6 factors flagged (all |r| < 0.25).
@@ -562,7 +677,7 @@ The benchmark compares a standard manual check (pairwise Spearman correlation) a
 
 | Task | Measured time |
 |------|---------------|
-| Proxy R² (6 factors, CatBoost, 80 iterations) | 0.5s |
+| Proxy R2 (6 factors, CatBoost, 80 iterations) | 0.5s |
 | Mutual information scores | included |
 | SHAP proxy scores (CatBoost, 150 iterations) | included |
 | Full benchmark end-to-end | 4.1s |
@@ -570,10 +685,10 @@ The benchmark compares a standard manual check (pairwise Spearman correlation) a
 ### Key findings
 
 - The Spearman correlation check returns 0/6 flagged — all correlations are below 0.25. It completely misses the postcode proxy. The relationship is non-linear and categorical: postcode area encodes group identity rather than a monotone ordering, so rank correlation cannot detect it.
-- The library's CatBoost proxy R² for postcode_area is 0.78 — a single postcode area variable accounts for 78% of the variance in the ethnicity diversity score. That is a near-certain proxy relationship. Mutual information (0.82 nats) confirms it independently.
-- The SHAP proxy score of 0.75 for postcode_area shows that the proxy relationship is not dormant — it is actively propagating into model prices. A factor can have high proxy R² but low SHAP proxy score if it is in the model but poorly weighted; here, the full chain from factor to protected attribute to price impact is present.
+- The library's CatBoost proxy R2 for postcode_area is 0.78 — a single postcode area variable accounts for 78% of the variance in the ethnicity diversity score. That is a near-certain proxy relationship. Mutual information (0.82 nats) confirms it independently.
+- The SHAP proxy score of 0.75 for postcode_area shows that the proxy relationship is not dormant — it is actively propagating into model prices. A factor can have high proxy R2 but low SHAP proxy score if it is in the model but poorly weighted; here, the full chain from factor to protected attribute to price impact is present.
 
-At n=50,000 the proxy R² scales roughly linearly; expect ~1s per factor. For portfolios above 250,000 policies, the proxy R² fits run on a 50,000-row subsample by default (configurable). The metrics themselves use all rows.
+At n=50,000 the proxy R2 scales roughly linearly; expect ~1s per factor. For portfolios above 250,000 policies, the proxy R2 fits run on a 50,000-row subsample by default (configurable). The metrics themselves use all rows.
 
 ## Related Libraries
 

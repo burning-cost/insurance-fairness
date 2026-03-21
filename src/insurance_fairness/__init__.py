@@ -101,6 +101,35 @@ correction with no iterative solver required::
     print(f"Baseline ES0.75: {report.rho_baseline:.4f}")
     print(f"Fair ES0.75:     {report.rho_fair:.4f}")
 
+v0.6.0 adds :class:`DoubleFairnessAudit` — joint action and outcome Pareto
+optimisation (Bian, Wang, Shi, Qi, 2026, arXiv:2601.19186).
+
+The key distinction this unlocks: action fairness (Delta_1) measures equal
+treatment at pricing time; outcome fairness (Delta_2) measures whether the
+product delivers equivalent value to each group after the policy is live.
+The FCA's Consumer Duty Outcome 4 (Price and Value) requires the latter. The
+empirical result from the paper: equalising premiums across gender (Delta_1=0)
+does NOT equalise loss ratios (Delta_2 remains large). A firm auditing only
+action fairness may still fail Consumer Duty.
+
+``DoubleFairnessAudit`` recovers the full Pareto front via lexicographic
+Tchebycheff scalarisation and selects the value-maximising Pareto point as
+the recommended operating policy::
+
+    from insurance_fairness import DoubleFairnessAudit
+
+    audit = DoubleFairnessAudit(n_alphas=20)
+    audit.fit(
+        X_train,        # features excluding protected attribute
+        y_premium,      # primary outcome: pure premium
+        y_loss_ratio,   # fairness outcome: claims / premium
+        S_gender,       # binary protected group indicator
+    )
+    result = audit.audit()
+    print(result.summary())
+    fig = audit.plot_pareto()
+    print(audit.report())   # FCA evidence pack section
+
 Quick start::
 
     import polars as pl
@@ -140,6 +169,10 @@ Exposing Indirect Discrimination in Insurance Rates. CAS Working Paper.
 
 Huang, F. & Pesenti, S. M. (2025). Marginal Fairness: Fair Decision-Making
 under Risk Measures. arXiv:2505.18895.
+
+Bian, Z., Wang, L., Shi, C., Qi, Z. (2026). Double Fairness Policy Learning:
+Integrating Action Fairness and Outcome Fairness in Decision-making.
+arXiv:2601.19186v2.
 """
 
 from insurance_fairness.audit import FairnessAudit, FairnessReport
@@ -152,6 +185,7 @@ from insurance_fairness.bias_metrics import (
     theil_index,
 )
 from insurance_fairness.counterfactual import counterfactual_fairness
+from insurance_fairness.double_fairness import DoubleFairnessAudit, DoubleFairnessResult
 from insurance_fairness.marginal_fairness import MarginalFairnessPremium, MarginalFairnessReport
 from insurance_fairness.multicalibration import MulticalibrationAudit, MulticalibrationReport
 from insurance_fairness.privatized_audit import PrivatizedFairnessAudit, PrivatizedAuditResult
@@ -176,7 +210,7 @@ from insurance_fairness.report import generate_markdown_report
 from insurance_fairness import optimal_transport  # noqa: F401
 from insurance_fairness import diagnostics  # noqa: F401
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 __all__ = [
     # Core audit
     "FairnessAudit",
@@ -190,6 +224,9 @@ __all__ = [
     "theil_index",
     # Counterfactual
     "counterfactual_fairness",
+    # Double fairness (v0.6.0)
+    "DoubleFairnessAudit",
+    "DoubleFairnessResult",
     # Marginal fairness (v0.5.0)
     "MarginalFairnessPremium",
     "MarginalFairnessReport",
