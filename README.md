@@ -82,9 +82,9 @@ import polars as pl
 from catboost import CatBoostRegressor
 from insurance_fairness import FairnessAudit
 
-# Synthetic UK motor portfolio — 1,000 policies
+# Synthetic UK motor portfolio — 10,000 policies
 rng = np.random.default_rng(42)
-n = 1_000
+n = 10_000
 
 # Protected characteristic: gender (binary)
 gender       = rng.choice(["M", "F"], size=n)
@@ -153,23 +153,23 @@ Note that `factor_cols` may include factors not used as model inputs. The audit 
 
 ### Output example
 
-The output below is from running the quickstart code above (n=1,000 policies, seed=42). With this small synthetic
-dataset and no real postcode-ethnicity correlation in the data, proxy detection finds nothing. The RED calibration
-status reflects noise at small n — try n=50,000 for a more representative audit.
+The output below is from running the quickstart code above (n=10,000 policies, seed=42). With this synthetic
+dataset and no real postcode-ethnicity correlation in the data, proxy detection finds nothing. The calibration
+disparity is within normal statistical range at this sample size.
 
 ```
 ============================================================
 Fairness Audit: Motor Model Q4 2024
 Date: 2026-03-19
-Policies: 1,000 | Exposure: 645.5
-Overall status: RED
+Policies: 10,000 | Exposure: 6,451.3
+Overall status: AMBER
 ============================================================
 
 Protected characteristic: gender
 ----------------------------------------
-  Demographic parity log-ratio: -0.0002 (ratio: 0.9998) [GREEN]
-  Max calibration disparity: 1.5887 [RED]
-  Disparate impact ratio: 0.9922 [GREEN]
+  Demographic parity log-ratio: +0.0081 (ratio: 1.0081) [GREEN]
+  Max calibration disparity: 1.1243 [AMBER]
+  Disparate impact ratio: 0.9964 [GREEN]
   No factors flagged as proxies.
 
 No rating factors flagged with proxy concerns.
