@@ -25,6 +25,7 @@ Expected output:
 - Manual Spearman correlation: looks benign for most factors
 - Library detects postcode as a high-proxy-R-squared factor (red/amber status)
 - SHAP proxy score confirms postcode's price impact correlates with the protected attribute
+- Financial impact: quantified premium differential between high/low diversity groups
 
 Run:
     python benchmarks/benchmark.py
@@ -344,6 +345,107 @@ print("  Spearman measures rank correlation, missing complex non-linear structur
 print("  Proxy R2 (CatBoost) captures that postcode area non-linearly encodes")
 print("  area-level demographic characteristics — the kind of proxy discrimination")
 print("  that survives a linear correlation check.")
+print()
+
+# ---------------------------------------------------------------------------
+# FINANCIAL IMPACT: Premium differential by diversity group
+# ---------------------------------------------------------------------------
+# The detection result only matters if it translates to real money.
+# Here we quantify the average premium difference between high-diversity
+# and low-diversity postcode groups — the "so what?" for the pricing committee.
+#
+# We define three groups based on the diversity score distribution:
+#   Low diversity:   diversity_score < 0.33  (predominantly outer / rural)
+#   Mid diversity:   0.33 <= diversity_score < 0.60
+#   High diversity:  diversity_score >= 0.60 (predominantly London inner)
+#
+# The postcode area loading contributes 0.25 * base_diversity to log_premium,
+# so groups differ materially in expected premium even after controlling for
+# other risk factors. This is the financial consequence of proxy discrimination.
+
+print("FINANCIAL IMPACT: Premium differential by diversity group")
+print("=" * 70)
+print()
+print("  The proxy detection says postcode_area is a strong proxy for the")
+print("  diversity score. But does that translate to a premium difference?")
+print("  This section quantifies the real money implication.")
+print()
+
+# Group policies by diversity score tertiles
+div_arr = df["diversity_score"].to_numpy()
+prem_arr = df["technical_premium"].to_numpy()
+
+low_mask = div_arr < 0.33
+high_mask = div_arr >= 0.60
+mid_mask = ~low_mask & ~high_mask
+
+n_low = low_mask.sum()
+n_mid = mid_mask.sum()
+n_high = high_mask.sum()
+
+mean_prem_low = prem_arr[low_mask].mean()
+mean_prem_mid = prem_arr[mid_mask].mean()
+mean_prem_high = prem_arr[high_mask].mean()
+
+mean_div_low = div_arr[low_mask].mean()
+mean_div_mid = div_arr[mid_mask].mean()
+mean_div_high = div_arr[high_mask].mean()
+
+print(f"  {'Group':<18} {'N policies':>12} {'Mean diversity':>16} {'Mean premium':>14}")
+print(f"  {'-'*18} {'-'*12} {'-'*16} {'-'*14}")
+print(f"  {'Low (<0.33)':<18} {n_low:>12,} {mean_div_low:>16.3f} {mean_prem_low:>14.2f}")
+print(f"  {'Mid (0.33-0.60)':<18} {n_mid:>12,} {mean_div_mid:>16.3f} {mean_prem_mid:>14.2f}")
+print(f"  {'High (>=0.60)':<18} {n_high:>12,} {mean_div_high:>16.3f} {mean_prem_high:>14.2f}")
+print()
+
+# Key differentials
+diff_high_vs_low = mean_prem_high - mean_prem_low
+pct_diff = (mean_prem_high / mean_prem_low - 1) * 100
+diff_high_vs_mid = mean_prem_high - mean_prem_mid
+
+print(f"  High vs Low diversity group:")
+print(f"    Mean premium differential:  £{diff_high_vs_low:,.2f} per policy")
+print(f"    Percentage differential:    {pct_diff:+.1f}%")
+print()
+print(f"  High vs Mid diversity group:")
+print(f"    Mean premium differential:  £{diff_high_vs_mid:,.2f} per policy")
+print()
+
+# Isolate the postcode-specific contribution.
+# The area_loading contributes base_diversity * 0.25 to log_premium.
+# We can estimate the postcode-area-driven premium difference by comparing
+# the premium under each group's actual diversity vs a counterfactual at the
+# population mean diversity (holding all other factors fixed).
+
+pop_mean_diversity = div_arr.mean()
+
+# Counterfactual: what would premium be if all policyholders had mean diversity?
+# area_loading = base_diversity * 0.25, so the actual log-premium includes:
+# (base_diversity - pop_mean_diversity) * 0.25 extra/less for each policy.
+# Postcode-area contribution to premium difference = exp(delta_loading) * premium / exp(area_loading)
+# More directly: delta_log_prem = (base_div_i - pop_mean_div) * 0.25
+delta_log_prem = (base_diversity - pop_mean_diversity) * 0.25
+postcode_premium_contribution = technical_premium * (np.exp(delta_log_prem) - 1)
+
+# Average attribution by group
+postcode_contrib_high = postcode_premium_contribution[high_mask].mean()
+postcode_contrib_low = postcode_premium_contribution[low_mask].mean()
+postcode_channel_diff = postcode_contrib_high - postcode_contrib_low
+
+print(f"  Postcode-area channel contribution to premium differential:")
+print(f"    (comparing groups at population-mean diversity vs actual diversity)")
+print(f"    High-diversity group receives avg +£{postcode_contrib_high:,.2f} from postcode loading")
+print(f"    Low-diversity group receives avg  £{postcode_contrib_low:,.2f} from postcode loading")
+print(f"    Postcode channel differential:    £{postcode_channel_diff:,.2f} per policy")
+print()
+print(f"  At {n_high:,} high-diversity policies, the total annual premium premium loading")
+print(f"  attributable to the postcode-proxy channel is approximately")
+print(f"  £{postcode_contrib_high * n_high:,.0f}/year for the high-diversity group.")
+print()
+print("  This is the direct financial stake of the proxy discrimination finding.")
+print("  If postcode_area is acting as an ethnicity proxy, this differential is the")
+print("  portion that cannot be defended on pure risk grounds and would be in scope")
+print("  for Equality Act 2010 Section 19 indirect discrimination review.")
 print()
 
 elapsed = time.time() - BENCHMARK_START
