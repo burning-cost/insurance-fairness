@@ -33,6 +33,24 @@ The library surfaces proxy concerns that a direct A/E comparison by group will m
 
 [Run on Databricks](https://github.com/burning-cost/burning-cost-examples/blob/main/notebooks/fairness_audit_demo.py)
 
+## Double Fairness Benchmark
+
+**Key insight:** action fairness and outcome fairness are not the same obligation and they can conflict. Minimising premium disparity (action fairness, Delta_1) does not minimise loss ratio disparity (outcome fairness, Delta_2). On a synthetic UK motor TPLI portfolio of 20,000 policies, minimising Delta_1 worsened Delta_2 substantially — the policy with the most equal premiums produced the most unequal loss ratios.
+
+This is the compliance gap FCA TR24/2 (2024) described: firms were auditing at the point of quoting and missing the Consumer Duty Outcome 4 obligation, which is a post-sale value question.
+
+The benchmark notebook (`notebooks/benchmark_double_fairness.py`) demonstrates:
+
+1. **The naive check** (demographic parity of premiums) produces a single ratio and a RAG status. It cannot distinguish between a policy with premium parity and equal loss ratios, and a policy with premium parity and divergent loss ratios. Both look identical to the naive check.
+
+2. **DoubleFairnessAudit** recovers the full Pareto front — every operating point along the action/outcome trade-off, with the corresponding revenue (V_hat) at each point. A pricing committee can make a documented choice about where to operate, with quantified evidence of the trade-off considered.
+
+3. **The trade-off is structural, not a modelling artefact.** When a rating factor (vehicle_group) is correlated with a protected characteristic (gender) for non-discriminatory reasons, any risk-based pricing model will produce both premium disparity and outcome disparity simultaneously. They cannot both be zeroed simultaneously without abandoning risk differentiation entirely.
+
+**Regulatory framing:** The `report()` output maps directly to FCA Consumer Duty PRIN 2A Outcome 4 (Price and Value) and TR24/2. The Pareto front is the auditable evidence of the considered trade-off. A firm that can only show a single demographic parity ratio cannot demonstrate the same level of considered decision-making.
+
+[Run the benchmark on Databricks](https://github.com/burning-cost/insurance-fairness/blob/main/notebooks/benchmark_double_fairness.py)
+
 ---
 
 **Blog post:** [Your Pricing Model Might Be Discriminating](https://burning-cost.github.io/2026/03/07/your-pricing-model-might-be-discriminating/) — the Lindholm-Richman-Tsanakas-Wüthrich framework explained, the Citizens Advice data in full, and what a defensible audit trail looks like.
