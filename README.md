@@ -710,10 +710,11 @@ At n=50,000 the proxy R2 scales roughly linearly; expect ~1s per factor. For por
 
 ## Related Libraries
 
-| Library | What it does |
+| Library | Description |
 |---------|-------------|
 | [insurance-governance](https://github.com/burning-cost/insurance-governance) | PRA SS1/23 model validation reports — fairness audit outputs feed directly into the governance sign-off pack |
-| [insurance-causal](https://github.com/burning-cost/insurance-causal) | Causal inference — establishes whether a rating factor causally drives risk or is a proxy for a protected characteristic |
+| [insurance-optimise](https://github.com/burning-cost/insurance-optimise) | Constrained rate change optimisation — use fairness constraints alongside profit and retention objectives |
+| [insurance-causal](https://github.com/burning-cost/insurance-causal) | Causal inference — establishes whether a rating factor genuinely drives risk or proxies a protected characteristic |
 | [insurance-synthetic](https://github.com/burning-cost/insurance-synthetic) | Synthetic portfolio generation — generate test data with known proxy structure to validate the audit pipeline |
 
 ## Licence
