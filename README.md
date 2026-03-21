@@ -50,7 +50,7 @@ The library surfaces proxy concerns that a direct A/E comparison by group will m
 ```bash
 uv add insurance-fairness
 # or
-pip install insurance-fairness
+uv add insurance-fairness
 ```
 
 **Dependencies:** polars, catboost, scikit-learn, scipy, numpy, jinja2, pyarrow
