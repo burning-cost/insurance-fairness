@@ -210,7 +210,12 @@ from insurance_fairness.report import generate_markdown_report
 from insurance_fairness import optimal_transport  # noqa: F401
 from insurance_fairness import diagnostics  # noqa: F401
 
-__version__ = "0.6.0"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("insurance-fairness")
+except PackageNotFoundError:
+    __version__ = "0.0.0"  # not installed
 __all__ = [
     # Core audit
     "FairnessAudit",
