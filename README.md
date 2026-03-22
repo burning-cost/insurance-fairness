@@ -14,7 +14,15 @@ The FCA's Consumer Duty (PS22/9, live July 2023) requires firms to monitor wheth
 
 The mechanism creating fair value failures is proxy discrimination. Your postcode rating factor is probably an ethnicity proxy: Citizens Advice (2022) estimated a £280/year ethnicity penalty in UK motor insurance, totalling £213m per year, driven by postcodes that encode protected-characteristic information without the insurer's pricing team ever modelling ethnicity directly. Proving — or disproving — that this is happening in your book is what proxy detection is for. The Equality Act 2010 Section 19 independently prohibits this as indirect discrimination.
 
-Every Python fairness library was built for binary classification or generic regression. None handles the multiplicative frequency/severity structure, exposure-weighted metrics, or the log-link world that pricing actuaries actually work in. This library fills that gap for the UK market.
+Every other fairness library is a methodology tool: it corrects model outputs to satisfy a chosen fairness criterion. This one is a compliance audit tool. It produces documented, evidenced, FCA-mapped analysis that a pricing committee can sign off and that will stand up to an FCA file review. None of the general-purpose fairness libraries handle the multiplicative frequency/severity structure, exposure-weighted metrics, or the log-link world that pricing actuaries work in — and none produce a Markdown audit report with regulatory mapping and a sign-off table.
+
+## Built for FCA compliance, not for research
+
+There are several open-source fairness libraries — some academically rigorous, some widely used. We built insurance-fairness because none of them answer the question a UK pricing actuary actually needs to answer: "Can I demonstrate to the FCA that this model does not constitute indirect discrimination under Section 19 of the Equality Act, and that it delivers fair value under Consumer Duty Outcome 4?"
+
+The distinction matters. A library that corrects model outputs to equalise demographic parity has done something mathematically interesting. It has not produced evidence for an FCA file review. It has not identified which rating factors are ethnicity proxies, computed exposure-weighted A/E ratios by protected group, mapped findings to PRIN 2A or TR24/2, or generated a sign-off document for a pricing committee.
+
+This library does those things. If you are a researcher exploring optimal transport methods for fairness correction, there are better tools for that purpose. If you are a UK pricing actuary with Consumer Duty obligations and an FCA inspection on the horizon, this is the only tool built for your problem.
 
 ## Why bother
 
