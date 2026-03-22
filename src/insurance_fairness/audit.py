@@ -535,9 +535,11 @@ class FairnessAudit:
                         method=self.counterfactual_method,
                     )
                 except Exception as exc:
-                    # Non-fatal: log and continue
-                    print(
-                        f"Warning: counterfactual test for '{pc}' failed: {exc}"
+                    # Non-fatal: warn and continue
+                    import warnings
+                    warnings.warn(
+                        f"Counterfactual test for '{pc}' failed: {exc}",
+                        stacklevel=2,
                     )
 
             results[pc] = pc_report
