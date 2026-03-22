@@ -895,7 +895,7 @@ At n=50,000 the proxy R2 scales roughly linearly; expect ~1s per factor. For por
 
 ## Licence
 
-BSD-3
+MIT
 
 ---
 
