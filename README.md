@@ -17,6 +17,14 @@ The mechanism creating fair value failures is proxy discrimination. Your postcod
 
 Every other fairness library is a methodology tool: it corrects model outputs to satisfy a chosen fairness criterion. This one is a compliance audit tool. It produces documented, evidenced, FCA-mapped analysis that a pricing committee can sign off and that will stand up to an FCA file review. None of the general-purpose fairness libraries handle the multiplicative frequency/severity structure, exposure-weighted metrics, or the log-link world that pricing actuaries work in — and none produce a Markdown audit report with regulatory mapping and a sign-off table.
 
+## Why use this?
+
+- UK pricing teams face live FCA enforcement risk: TR24/2 (2024) found most Fair Value Assessments lacked substance, and six Consumer Duty investigations are open. A generic fairness library produces a number; this produces a sign-off document.
+- Detects proxy discrimination automatically — identifies which rating factors (e.g. postcode) are acting as ethnicity proxies using mutual information, CatBoost proxy R², and SHAP-linked price impact, in terms a pricing committee can understand and challenge.
+- Exposure-weighted metrics throughout: all calibration and parity tests weight by earned car-years, not policy count — required for a correct Equality Act Section 19 analysis on a motor book.
+- Generates FCA-mapped Markdown audit reports with regulatory cross-references (PRIN 2A, TR24/2, Equality Act s.19) and a sign-off table, suitable for inclusion in a pricing committee pack or FCA file review.
+- The only Python tool that handles the multiplicative frequency/severity structure, log-link GLM world, and action-vs-outcome fairness trade-off (FCA Consumer Duty Outcome 4) that UK pricing actuaries actually face.
+
 ## Built for FCA compliance, not for research
 
 There are several open-source fairness libraries — some academically rigorous, some widely used. We built insurance-fairness because none of them answer the question a UK pricing actuary actually needs to answer: "Can I demonstrate to the FCA that this model does not constitute indirect discrimination under Section 19 of the Equality Act, and that it delivers fair value under Consumer Duty Outcome 4?"
