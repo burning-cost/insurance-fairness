@@ -901,6 +901,24 @@ MONTE CARLO RESULTS
 
 At n=50,000 the proxy R2 scales roughly linearly; expect ~1s per factor. For portfolios above 250,000 policies, the proxy R2 fits run on a 50,000-row subsample by default (configurable). The metrics themselves use all rows.
 
+## Limitations
+
+- **The proxy detection thresholds are not FCA-prescribed.** The proxy R-squared thresholds (amber: >0.05, red: >0.10) and mutual information thresholds are operationally derived, not regulatory requirements. The FCA has published no quantitative threshold for proxy discrimination. A factor below the red threshold may still constitute indirect discrimination under Section 19 of the Equality Act 2010 if it disproportionately disadvantages a protected group — the statistical test is a trigger for investigation, not a compliance safe harbour.
+
+- **Proxy detection requires a protected characteristic column, which most insurers do not hold.** The library cannot detect ethnicity discrimination directly from motor book data: ethnicity is not a field insurers are permitted to collect. The recommended workaround — joining the ONS 2021 Census LSOA ethnicity proportions to postcode data — is an area-level proxy, not individual-level data. Factor correlations with this proxy are correlations with area demographics, not individual ethnicity. The analysis is still legally relevant under indirect discrimination law, but it understates true individual-level correlation.
+
+- **Calibration by group is not counterfactual fairness.** A model that is well-calibrated (A/E = 1.0) within each protected group at each predicted risk decile is not necessarily free of discrimination. If a protected characteristic is correlated with the features used in the model — which it will be for postcode and ethnicity — then equal calibration means the model is correctly pricing the proxy-contaminated risk profile, not that it is pricing independent of the protected characteristic. Calibration by group is the most defensible legal metric, but it does not prove the absence of indirect discrimination; it proves proportionate accuracy.
+
+- **The DoubleFairnessAudit makes two modelling assumptions that bias Delta estimates.** The `DoubleFairnessAudit` uses outcome regression only (no doubly-robust estimation). If the nuisance models for outcome or propensity are misspecified — likely when the feature space is high-dimensional and the protected groups differ significantly in covariate distribution — the Delta_1 and Delta_2 estimates are biased. The bias direction depends on the misspecification and cannot be bounded without additional assumptions.
+
+- **The MarginalFairnessPremium correction is actuarially neutral on average but not per-policyholder.** The Huang-Pesenti (2025) correction ensures the portfolio-level distortion risk measure (Expected Shortfall, Wang transform) is insensitive to protected attributes at the margin. Individual policyholders may receive different premiums before and after correction, sometimes materially so. The correction does not produce discrimination-free individual premiums — it produces a discrimination-free aggregate risk measure. Use `DiscriminationFreePrice` if per-policyholder fairness is required.
+
+- **Counterfactual fairness via direct flip assumes feature independence.** The `method="direct_flip"` approach in `counterfactual_fairness()` flips the protected characteristic while holding all other features fixed. In a real portfolio, the protected characteristic is correlated with many other features — age band, vehicle group, postcode. Flipping gender while holding everything else constant produces an incoherent individual. The LRTW marginalisation method (`method="lrtw_marginalisation"`) is more coherent — it averages over the protected characteristic distribution rather than flipping to a specific value.
+
+- **The Markdown audit report is evidence, not a compliance determination.** The FCA-mapped Markdown output documents the analysis and maps it to Consumer Duty and Equality Act obligations. It does not constitute legal advice, a compliance determination, or a regulatory safe harbour. The regulator's assessment of whether a specific model constitutes indirect discrimination under Section 19 depends on the proportionality justification for the rating factor, which requires expert legal and actuarial judgement outside the scope of this library.
+
+- **Large portfolios: proxy R-squared fits use a 50,000-observation subsample.** Above 250,000 policies, the proxy R-squared CatBoost fits run on a subsample by default. If the portfolio has strong demographic stratification — e.g. one region is 90% minority-ethnic — the subsample may under-represent that region. Check the subsample demographic distribution before relying on proxy R-squared results for thin subgroups.
+
 ## Related Libraries
 
 | Library | Description |
