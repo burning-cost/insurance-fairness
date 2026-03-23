@@ -168,6 +168,30 @@ report.to_markdown("audit_q4_2024.md")  # write FCA-ready report
 
 Note that `factor_cols` may include factors not used as model inputs. The audit checks for proxy contamination in both model inputs and non-model factors — a factor that is not in the model can still correlate with protected characteristics and inform future model development decisions. In this example, `postcode_district` and `vehicle_group` are included in the audit even though neither is a feature in the fitted model.
 
+## Expected Performance
+
+On a 20,000-policy synthetic UK motor portfolio with known postcode-ethnicity proxy structure (seed=42):
+
+| Metric | Manual Spearman (|r| > 0.25) | Library (proxy R² + MI) |
+|--------|------------------------------|------------------------|
+| postcode_area flagged as proxy | No (|r| ≈ 0.10) | Yes (proxy R² ≈ 0.62, RED) |
+| Factors correctly flagged | 0/6 | 1–2/6 |
+| Detection rate across 50 seeds | 0% | 100% |
+| Non-linear proxy detection | No | Yes (CatBoost) |
+| Financial impact quantified | No | Yes |
+
+High-diversity policyholders pay roughly £70–90 more per year than low-diversity policyholders,
+driven through the postcode area loading. The manual Spearman check returns |r| ≈ 0.10 and
+finds nothing. The library returns proxy R² ≈ 0.62 — unambiguously RED — because postcode
+encodes diversity non-linearly across London vs outer vs rural areas.
+
+Regulatory framing: Equality Act 2010 Section 19 (indirect discrimination), FCA Consumer
+Duty PRIN 2A Outcome 4, TR24/2 (2024).
+
+Run the validation: import `notebooks/databricks_validation.py` into Databricks.
+
+---
+
 ### Output example
 
 The output below is from running the quickstart code above (n=10,000 policies, seed=42). With this synthetic
