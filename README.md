@@ -952,6 +952,10 @@ At n=50,000 the proxy R2 scales roughly linearly; expect ~1s per factor. For por
 | [insurance-causal](https://github.com/burning-cost/insurance-causal) | Causal inference — establishes whether a rating factor genuinely drives risk or proxies a protected characteristic |
 | [insurance-synthetic](https://github.com/burning-cost/insurance-synthetic) | Synthetic portfolio generation — generate test data with known proxy structure to validate the audit pipeline |
 
+## Training Course
+
+Want structured learning? [Insurance Pricing in Python](https://burning-cost.github.io/course) is a 12-module course covering the full pricing workflow. Module 9 covers proxy discrimination, FCA Consumer Duty obligations, and running a defensible fairness audit. £97 one-time.
+
 ## Licence
 
 MIT
