@@ -17,6 +17,10 @@ The mechanism creating fair value failures is proxy discrimination. Your postcod
 
 Every other fairness library is a methodology tool: it corrects model outputs to satisfy a chosen fairness criterion. This one is a compliance audit tool. It produces documented, evidenced, FCA-mapped analysis that a pricing committee can sign off and that will stand up to an FCA file review. None of the general-purpose fairness libraries handle the multiplicative frequency/severity structure, exposure-weighted metrics, or the log-link world that pricing actuaries work in — and none produce a Markdown audit report with regulatory mapping and a sign-off table.
 
+## Part of the Burning Cost stack
+
+Takes a fitted pricing model and a dataset with protected characteristics. Feeds audit reports and proxy detection results into [insurance-governance](https://github.com/burning-cost/insurance-governance) for pricing committee sign-off packs and FCA Consumer Duty documentation. → [See the full stack](https://burning-cost.github.io/stack/)
+
 ## Why use this?
 
 - UK pricing teams face live FCA enforcement risk: TR24/2 (2024) found most Fair Value Assessments lacked substance, and six Consumer Duty investigations are open. A generic fairness library produces a number; this produces a sign-off document.
