@@ -3,22 +3,77 @@ message: "If you use this software, please cite it as below."
 type: software
 title: "insurance-fairness"
 abstract: >
-  Proxy discrimination auditing for insurance pricing. Measures indirect
-  discrimination by protected characteristics in rating models, with
-  structured compliance reports for FCA Equality Principle EP25/2 and
-  Consumer Duty obligations in UK personal lines insurance.
+  Statistical auditing toolkit for proxy discrimination and fair value assessment
+  in UK insurance pricing. Provides FCA Consumer Duty compliance evidence:
+  proxy R-squared detection, exposure-weighted parity metrics, discrimination-free
+  pricing (Lindholm-Richman-Tsanakas-Wüthrich), and structured Markdown audit
+  reports with regulatory mapping to PRIN 2A and TR24/2.
 authors:
-  - name: "Burning Cost"
-    website: "https://burning-cost.github.io"
+  - name: "Burning Cost Contributors"
+url: "https://github.com/burning-cost/insurance-fairness"
 repository-code: "https://github.com/burning-cost/insurance-fairness"
 license: MIT
+version: "0.6.1"
+date-released: "2026-03-21"
 keywords:
-  - insurance-pricing
-  - actuarial
+  - insurance
   - fairness
-  - proxy-discrimination
-  - fca
-  - consumer-duty
-  - equality
-  - bias-detection
-  - uk-insurance
+  - proxy discrimination
+  - FCA Consumer Duty
+  - actuarial
+  - pricing
+references:
+  - type: article
+    title: "Discrimination-Free Insurance Pricing"
+    authors:
+      - family-names: Lindholm
+        given-names: Mathias
+      - family-names: Richman
+        given-names: Ronald
+      - family-names: Tsanakas
+        given-names: Andreas
+      - family-names: Wüthrich
+        given-names: Mario V.
+    journal: "ASTIN Bulletin"
+    volume: 52
+    issue: 1
+    start: 55
+    end: 89
+    year: 2022
+    doi: "10.1017/asb.2021.23"
+  - type: article
+    title: "What is Fair? Proxy Discrimination vs. Demographic Disparities in Insurance Pricing"
+    authors:
+      - family-names: Lindholm
+        given-names: Mathias
+      - family-names: Richman
+        given-names: Ronald
+      - family-names: Tsanakas
+        given-names: Andreas
+      - family-names: Wüthrich
+        given-names: Mario V.
+    journal: "Scandinavian Actuarial Journal"
+    year: 2024
+    doi: "10.1080/03461238.2023.2290373"
+  - type: article
+    title: "Double Fairness Policy Learning: Integrating Action Fairness and Outcome Fairness in Decision-making"
+    authors:
+      - family-names: Bian
+        given-names: Zhaoqi
+      - family-names: Wang
+        given-names: Linglong
+      - family-names: Shi
+        given-names: Chengchun
+      - family-names: Qi
+        given-names: Zhengling
+    year: 2026
+    url: "https://arxiv.org/abs/2601.19186"
+  - type: article
+    title: "Marginal Fairness: Fair Decision-Making under Risk Measures"
+    authors:
+      - family-names: Huang
+        given-names: Fei
+      - family-names: Pesenti
+        given-names: Silvana M.
+    year: 2025
+    url: "https://arxiv.org/abs/2505.18895"

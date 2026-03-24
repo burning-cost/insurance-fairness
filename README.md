@@ -646,7 +646,7 @@ The library does not bundle this data (it is large and updated quarterly). The j
 
 The FCA has not prescribed a specific methodology. The academic framework underlying this library (Lindholm, Richman, Tsanakas, Wüthrich, 2022-2026) has strong credentials — published in ASTIN Bulletin and the European Journal of Operational Research, and awarded by the American Academy of Actuaries. Using a published, peer-reviewed methodology is more defensible than a bespoke approach.
 
-## Academic References
+## References
 
 - Lindholm, Richman, Tsanakas, Wüthrich (2022). Discrimination-Free Insurance Pricing. ASTIN Bulletin 52(1), 55-89.
 - Lindholm, Richman, Tsanakas, Wüthrich (2023). A Multi-Task Network Approach for Calculating Discrimination-Free Insurance Prices. European Actuarial Journal.
