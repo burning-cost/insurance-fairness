@@ -9,7 +9,7 @@
 
 > Questions or feedback? Start a [Discussion](https://github.com/burning-cost/insurance-fairness/discussions). Found it useful? A star helps others find it.
 
-Every UK insurer must demonstrate fair value under FCA Consumer Duty (PRIN 2A). insurance-fairness provides the statistical evidence.
+Your pricing model is probably using postcode as a rating factor — and postcode correlates with ethnicity. The FCA's Consumer Duty (PS22/9) requires you to demonstrate this is not producing indirect discrimination under Section 19 of the Equality Act 2010, and the FCA's thematic review TR24/2 found most insurers' Fair Value Assessments could not do this. insurance-fairness produces the documented, exposure-weighted audit trail your pricing committee can sign off.
 
 The FCA's Consumer Duty (PS22/9, live July 2023) requires firms to monitor whether their products deliver fair value for different groups of customers. The FCA's thematic review TR24/2 (August 2024) found most insurers' Fair Value Assessments were "high-level summaries with little substance" — and the FCA has since opened six Consumer Duty investigations, two of which directly involve insurers on fair value grounds. The compliance risk is live, not theoretical.
 
