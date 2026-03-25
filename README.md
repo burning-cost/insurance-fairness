@@ -960,6 +960,14 @@ At n=50,000 the proxy R2 scales roughly linearly; expect ~1s per factor. For por
 
 Want structured learning? [Insurance Pricing in Python](https://burning-cost.github.io/course) is a 12-module course covering the full pricing workflow. Module 9 covers proxy discrimination, FCA Consumer Duty obligations, and running a defensible fairness audit. £97 one-time.
 
+## Community
+
+- **Questions?** Start a [Discussion](https://github.com/burning-cost/insurance-fairness/discussions)
+- **Found a bug?** Open an [Issue](https://github.com/burning-cost/insurance-fairness/issues)
+- **Blog & tutorials:** [burning-cost.github.io](https://burning-cost.github.io)
+
+If this library saves you time, a star on GitHub helps others find it.
+
 ## Licence
 
 MIT

@@ -44,3 +44,7 @@ uv run pytest --run-slow
 - Tests go in `tests/` and should use the synthetic data generators so they do not depend on external data
 
 If you are adding a new fairness metric, add a docstring that cites the source (paper, FCA guidance, or Equality Act section) and explains the interpretation in plain language a pricing actuary would use.
+
+---
+
+For questions or to discuss ideas before opening an issue, start a [Discussion](https://github.com/burning-cost/insurance-fairness/discussions).
