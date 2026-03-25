@@ -1,5 +1,14 @@
 # Changelog
 
+
+## v0.6.3 (2026-03-25)
+- feat: add DiscriminationInsensitiveReweighter — propensity-based sample reweighting for discrimination-insensitive training (Miao & Pesenti 2026, arXiv:2603.16720)
+- Weights w_i = P(A=a_i) / P(A=a_i|X_i) integrate with any sklearn sample_weight API
+- Supports logistic regression and random forest propensity models
+- ReweighterDiagnostics dataclass: effective_n, per-group propensity scores, raw propensity array
+- Bug fix from the start: _prepare_features handles pandas 2.x StringDtype columns via is_string_dtype guard
+- 28 tests covering binary/multi-class A, string labels, pandas interop, integration DGP test
+
 ## v0.6.0 (2026-03-22) [unreleased]
 - Fix licence footer: BSD-3 was wrong, LICENSE file is MIT
 - Benchmark fixes Round 3: rename, financial impact, Monte Carlo sensitivity

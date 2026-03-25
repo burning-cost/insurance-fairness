@@ -130,6 +130,24 @@ the recommended operating policy::
     fig = audit.plot_pareto()
     print(audit.report())   # FCA evidence pack section
 
+v0.6.3 adds :class:`DiscriminationInsensitiveReweighter` — propensity-based
+sample reweighting to achieve X⊥A without removing protected variables from
+the model (Miao & Pesenti, 2026, arXiv:2603.16720).
+
+The reweighter computes w_i = P(A=a_i) / P(A=a_i|X_i) using a logistic or
+random forest propensity model. Weights integrate with any sklearn
+``sample_weight`` API::
+
+    from insurance_fairness import DiscriminationInsensitiveReweighter
+
+    reweighter = DiscriminationInsensitiveReweighter(propensity_model="logistic")
+    reweighter.fit(X_train, A_train)
+    weights = reweighter.transform(X_train, A_train)
+    model.fit(X_train, y_train, sample_weight=weights)
+
+    diag = reweighter.diagnostics
+    print(f"Effective n: {diag.effective_n:.0f} / {len(A_train)}")
+
 Quick start::
 
     import polars as pl
@@ -173,6 +191,9 @@ under Risk Measures. arXiv:2505.18895.
 Bian, Z., Wang, L., Shi, C., Qi, Z. (2026). Double Fairness Policy Learning:
 Integrating Action Fairness and Outcome Fairness in Decision-making.
 arXiv:2601.19186v2.
+
+Miao, W. & Pesenti, S. M. (2026). Discrimination-Insensitive Insurance Pricing
+via KL Divergence Minimisation. arXiv:2603.16720.
 """
 
 from insurance_fairness.audit import FairnessAudit, FairnessReport
@@ -185,6 +206,10 @@ from insurance_fairness.bias_metrics import (
     theil_index,
 )
 from insurance_fairness.counterfactual import counterfactual_fairness
+from insurance_fairness.discrimination_insensitive import (
+    DiscriminationInsensitiveReweighter,
+    ReweighterDiagnostics,
+)
 from insurance_fairness.double_fairness import DoubleFairnessAudit, DoubleFairnessResult
 from insurance_fairness.marginal_fairness import MarginalFairnessPremium, MarginalFairnessReport
 from insurance_fairness.multicalibration import MulticalibrationAudit, MulticalibrationReport
@@ -229,6 +254,9 @@ __all__ = [
     "theil_index",
     # Counterfactual
     "counterfactual_fairness",
+    # Discrimination-insensitive reweighting (v0.6.3)
+    "DiscriminationInsensitiveReweighter",
+    "ReweighterDiagnostics",
     # Double fairness (v0.6.0)
     "DoubleFairnessAudit",
     "DoubleFairnessResult",
