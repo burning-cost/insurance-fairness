@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.6.5 (2026-03-25)
+- fix: IndexError in _build_summary where wmean closure applied full-dataset
+  boolean mask to already-sliced group arrays. The wmean helper was defined
+  inside the per-group loop and captured `mask` via closure, then applied
+  `arr[mask]` to callers that were already passing group-sliced arrays
+  (h_A_g, h_U_g, etc.). Fixed by passing w_g and gw as default arguments so
+  wmean operates directly on the pre-sliced array without re-indexing.
+  20 tests in TestBasicFit, TestProxyVulnerabilityFormula, TestProxyFreeModel,
+  TestExposureWeighting, TestSegmentReport, TestCustomModel, TestDeterminism
+  now passing. 26 tests total in test_indirect.py all pass.
+
 ## v0.6.4 (2026-03-25)
 - feat: add IndirectDiscriminationAudit — end-to-end partition-based audit of
   indirect discrimination implementing the five benchmark premiums from Côté,

@@ -434,8 +434,9 @@ def _build_summary(
         w_g = w[mask]
         gw = w_g.sum()
 
-        def wmean(arr: np.ndarray) -> float:
-            return float((arr[mask] * w_g).sum() / gw) if gw > 0 else float("nan")
+        # wmean operates on already-sliced group arrays — do not re-index with mask.
+        def wmean(arr: np.ndarray, _w_g: np.ndarray = w_g, _gw: float = gw) -> float:
+            return float((arr * _w_g).sum() / _gw) if _gw > 0 else float("nan")
 
         h_A_g = h_A[mask]
         h_U_g = h_U[mask]
