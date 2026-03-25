@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.3 (2026-03-25)
+- feat: add DiscriminationInsensitiveReweighter — KL divergence-minimising sample
+  reweighting for discrimination-insensitive training (Miao & Pesenti 2026,
+  arXiv:2603.16720). Propensity-based weights achieve X ⊥ A without removing the
+  protected attribute. Supports logistic and random forest propensity models,
+  weight clipping, and diagnostics including effective sample size.
+  28 tests. Weights integrate with any sklearn sample_weight API.
+
 ## v0.6.0 (2026-03-22) [unreleased]
 - Fix licence footer: BSD-3 was wrong, LICENSE file is MIT
 - Benchmark fixes Round 3: rename, financial impact, Monte Carlo sensitivity
@@ -74,4 +82,3 @@
 - Add badges and cross-links to README
 - Fix 8 test failures from initial Databricks run
 - Initial release of insurance-fairness library
-

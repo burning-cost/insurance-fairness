@@ -130,6 +130,20 @@ the recommended operating policy::
     fig = audit.plot_pareto()
     print(audit.report())   # FCA evidence pack section
 
+v0.6.3 adds :class:`DiscriminationInsensitiveReweighter` — training-data
+reweighting that achieves X ⊥ A without removing the protected attribute.
+Implements the KL divergence minimisation approach from Miao & Pesenti (2026,
+arXiv:2603.16720). Weights integrate with any sklearn ``sample_weight``
+parameter::
+
+    from insurance_fairness import DiscriminationInsensitiveReweighter
+
+    rw = DiscriminationInsensitiveReweighter(protected_col="gender")
+    weights = rw.fit_transform(X_train)
+
+    model.fit(X_train.drop("gender", axis=1), y_train, sample_weight=weights)
+    diag = rw.diagnostics(X_train)
+
 Quick start::
 
     import polars as pl
@@ -173,6 +187,9 @@ under Risk Measures. arXiv:2505.18895.
 Bian, Z., Wang, L., Shi, C., Qi, Z. (2026). Double Fairness Policy Learning:
 Integrating Action Fairness and Outcome Fairness in Decision-making.
 arXiv:2601.19186v2.
+
+Miao, K. E. & Pesenti, S. M. (2026). Discrimination-Insensitive Pricing.
+arXiv:2603.16720.
 """
 
 from insurance_fairness.audit import FairnessAudit, FairnessReport
@@ -185,6 +202,10 @@ from insurance_fairness.bias_metrics import (
     theil_index,
 )
 from insurance_fairness.counterfactual import counterfactual_fairness
+from insurance_fairness.discrimination_insensitive import (
+    DiscriminationInsensitiveReweighter,
+    ReweighterDiagnostics,
+)
 from insurance_fairness.double_fairness import DoubleFairnessAudit, DoubleFairnessResult
 from insurance_fairness.marginal_fairness import MarginalFairnessPremium, MarginalFairnessReport
 from insurance_fairness.multicalibration import MulticalibrationAudit, MulticalibrationReport
@@ -229,6 +250,9 @@ __all__ = [
     "theil_index",
     # Counterfactual
     "counterfactual_fairness",
+    # Discrimination-insensitive reweighting (v0.6.3)
+    "DiscriminationInsensitiveReweighter",
+    "ReweighterDiagnostics",
     # Double fairness (v0.6.0)
     "DoubleFairnessAudit",
     "DoubleFairnessResult",
