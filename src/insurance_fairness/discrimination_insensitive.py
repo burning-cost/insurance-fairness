@@ -510,6 +510,7 @@ class DiscriminationInsensitiveReweighter:
         cat_cols = [
             c for c in X_sub.columns
             if pd.api.types.is_object_dtype(X_sub[c])
+            or pd.api.types.is_string_dtype(X_sub[c])
             or isinstance(X_sub[c].dtype, pd.CategoricalDtype)
         ]
         num_cols = [c for c in X_sub.columns if c not in cat_cols]

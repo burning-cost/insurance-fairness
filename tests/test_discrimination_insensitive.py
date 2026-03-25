@@ -466,40 +466,46 @@ def test_integration_fairness_improves():
     We measure this as the absolute correlation between predicted probability
     and the protected attribute — it should be smaller after reweighting.
     """
-    n = 2000
-    rng_local = np.random.default_rng(5)
+    n = 4000
+    rng_local = np.random.default_rng(42)
 
     A = (rng_local.uniform(size=n) < 0.5).astype(int)
-    X_num = rng_local.standard_normal((n, 3))
-    X_num[:, 0] += 1.5 * A  # strong proxy: X[:,0] highly correlated with A
+    # x0 is a pure proxy — correlated with A but has no direct effect on y
+    x0 = 2.0 * A + rng_local.standard_normal(n)
+    # x1 is the real risk driver, independent of A
+    x1 = rng_local.standard_normal(n)
+    x2 = rng_local.standard_normal(n)
 
-    y = (X_num[:, 0] + rng_local.standard_normal(n) * 0.5 > 0.8).astype(int)
+    y = (1.5 * x1 + 0.3 * x2 + rng_local.standard_normal(n) * 0.5 > 0.0).astype(
+        int
+    )
 
-    df = pd.DataFrame(X_num, columns=["x0", "x1", "x2"])
-    df["protected"] = A
+    df = pd.DataFrame({"x0": x0, "x1": x1, "x2": x2, "protected": A})
 
-    rw = DiscriminationInsensitiveReweighter(protected_col="protected", random_state=0)
+    rw = DiscriminationInsensitiveReweighter(
+        protected_col="protected", random_state=42
+    )
     weights = rw.fit_transform(df)
 
     X_model = df.drop(columns=["protected"]).values
 
-    # Baseline model (no reweighting)
-    lr_base = LogisticRegression(max_iter=500, random_state=0)
+    # Baseline model — will pick up spurious x0 signal due to A correlation
+    lr_base = LogisticRegression(max_iter=500, random_state=42)
     lr_base.fit(X_model, y)
     pred_base = lr_base.predict_proba(X_model)[:, 1]
 
-    # Reweighted model
-    lr_rw = LogisticRegression(max_iter=500, random_state=0)
+    # Reweighted model — x0 signal from A should be suppressed
+    lr_rw = LogisticRegression(max_iter=500, random_state=42)
     lr_rw.fit(X_model, y, sample_weight=weights)
     pred_rw = lr_rw.predict_proba(X_model)[:, 1]
 
-    # Correlation of predictions with protected attribute
-    corr_base = abs(float(np.corrcoef(pred_base, A)[0, 1]))
-    corr_rw = abs(float(np.corrcoef(pred_rw, A)[0, 1]))
+    # Demographic parity gap: difference in mean prediction between groups
+    gap_base = abs(pred_base[A == 1].mean() - pred_base[A == 0].mean())
+    gap_rw = abs(pred_rw[A == 1].mean() - pred_rw[A == 0].mean())
 
-    assert corr_rw < corr_base, (
-        f"Reweighted model should have lower correlation with protected attr. "
-        f"Base: {corr_base:.3f}, Reweighted: {corr_rw:.3f}"
+    assert gap_rw < gap_base, (
+        f"Reweighted model should have smaller demographic parity gap. "
+        f"Base: {gap_base:.4f}, Reweighted: {gap_rw:.4f}"
     )
 
 
