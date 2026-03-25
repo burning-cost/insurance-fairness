@@ -597,6 +597,32 @@ result.to_dict()        # JSON-serialisable — store in model review database
 
 **Reference:** Bian, Z., Wang, L., Shi, C., Qi, Z. (2026). Double Fairness Policy Learning: Integrating Action Fairness and Outcome Fairness in Decision-making. arXiv:2601.19186v2.
 
+### `indirect` — IndirectDiscriminationAudit
+
+**New in v0.6.4.** End-to-end partition-based audit of indirect discrimination, implementing the five benchmark premiums from Côté, Côté & Charpentier (CAS Working Paper, October 2025). Unlike `ProxyVulnerabilityScore` (which takes pre-computed premium columns), this class fits the benchmark models from raw training data in a single `fit()` call.
+
+The core insight: you do not need a causal graph to measure proxy discrimination. Fit two models — one that sees the protected attribute ("aware"), one that does not ("unaware") — and measure how much they differ. When `h_U(x) > h_A(x)` for a group, the unaware model has used proxy features to infer the protected attribute. That gap is proxy vulnerability.
+
+**The five benchmark premiums:**
+
+| Premium | Notation | Description |
+|---------|----------|-------------|
+| Aware | h_A(x, s) | Trained with protected attribute — the actuarial truth |
+| Unaware | h_U(x) | Trained without protected attribute — the regulatory baseline |
+| Unawareness | h_UN(x\s) | h_A evaluated with s masked to group mean |
+| Proxy-free | h_PV(x) | Unaware + known proxy features also removed |
+| Parity-cost | h_C(x, s) | h_A adjusted so each group has equal weighted mean |
+
+**Proxy vulnerability = mean |h_U(x) - h_A(x)|** — a scalar that quantifies how much the unaware model exploits proxies. Zero means the unaware model learned nothing about the protected attribute from the remaining features. Non-zero means it did, and by how much.
+
+
+
+Pass any sklearn-compatible estimator as `model_class`:
+
+
+
+**Reference:** Côté, O., Côté, M.-P., and Charpentier, A. (2025). A Scalable Toolbox for Exposing Indirect Discrimination in Insurance Rates. CAS Working Paper.
+
 ## Fairness Criteria and Their Insurance Relevance
 
 The library implements three distinct criteria. They are not equivalent and cannot all be satisfied simultaneously when base rates differ across groups (Chouldechova, 2017).

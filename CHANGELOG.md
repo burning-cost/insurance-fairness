@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.6.4 (2026-03-25)
+- feat: add IndirectDiscriminationAudit — end-to-end partition-based audit of
+  indirect discrimination implementing the five benchmark premiums from Côté,
+  Côté & Charpentier (CAS Working Paper, October 2025). Fits aware (h_A),
+  unaware (h_U), unawareness (h_UN), proxy-free (h_PV), and parity-cost (h_C)
+  models from raw training data. Computes proxy vulnerability = mean |h_U - h_A|
+  per segment, parity-cost gap, and unawareness gap. No causal graph required.
+  LightGBM as optional default model with GradientBoostingRegressor fallback.
+  Exposure-weighted metrics throughout. 23 tests.
+
 ## v0.6.3 (2026-03-25)
 - feat: add DiscriminationInsensitiveReweighter — KL divergence-minimising sample
   reweighting for discrimination-insensitive training (Miao & Pesenti 2026,

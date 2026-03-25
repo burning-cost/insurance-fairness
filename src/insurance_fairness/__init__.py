@@ -144,6 +144,24 @@ parameter::
     model.fit(X_train.drop("gender", axis=1), y_train, sample_weight=weights)
     diag = rw.diagnostics(X_train)
 
+v0.6.4 adds :class:`IndirectDiscriminationAudit` — end-to-end partition-based
+audit of indirect discrimination. Implements the five benchmark premiums from
+Côté, Côté & Charpentier (CAS Working Paper, October 2025): aware (h_A),
+unaware (h_U), unawareness (h_UN), proxy-free (h_PV), and parity-cost (h_C).
+Proxy vulnerability = mean |h_U(x) - h_A(x)| quantifies how much the unaware
+model exploits proxies for the protected attribute. No causal graph required::
+
+    from insurance_fairness import IndirectDiscriminationAudit
+
+    audit = IndirectDiscriminationAudit(
+        protected_attr="gender",
+        proxy_features=["postcode_district", "occupation"],
+        exposure_col="exposure",
+    )
+    result = audit.fit(X_train, y_train, X_test, y_test)
+    print(f"Proxy vulnerability: {result.proxy_vulnerability:.2f}")
+    print(result.segment_report)
+
 Quick start::
 
     import polars as pl
@@ -207,6 +225,7 @@ from insurance_fairness.discrimination_insensitive import (
     ReweighterDiagnostics,
 )
 from insurance_fairness.double_fairness import DoubleFairnessAudit, DoubleFairnessResult
+from insurance_fairness.indirect import IndirectDiscriminationAudit, IndirectDiscriminationResult
 from insurance_fairness.marginal_fairness import MarginalFairnessPremium, MarginalFairnessReport
 from insurance_fairness.multicalibration import MulticalibrationAudit, MulticalibrationReport
 from insurance_fairness.privatized_audit import PrivatizedFairnessAudit, PrivatizedAuditResult
@@ -256,6 +275,9 @@ __all__ = [
     # Double fairness (v0.6.0)
     "DoubleFairnessAudit",
     "DoubleFairnessResult",
+    # Indirect discrimination audit (v0.6.4)
+    "IndirectDiscriminationAudit",
+    "IndirectDiscriminationResult",
     # Marginal fairness (v0.5.0)
     "MarginalFairnessPremium",
     "MarginalFairnessReport",
