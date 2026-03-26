@@ -129,8 +129,9 @@ class EqualisedOddsResult:
     Equalised odds check for frequency models.
 
     Compares true positive rate (TPR) and false positive rate (FPR) across
-    protected-characteristic groups. For regression pricing, adapted to
-    compare within-group rank correlation of predictions and actuals.
+    protected-characteristic groups. Both must be equal for equalised odds.
+    For regression pricing, adapted to compare within-group rank correlation
+    of predictions and actuals.
     """
 
     protected_col: str
@@ -273,7 +274,11 @@ def demographic_parity_ratio(
     ci_lower: float | None = None
     ci_upper: float | None = None
     if n_bootstrap > 0 and len(group_keys) == 2:
-        ref, comp = group_keys[0], group_keys[1]
+        # Stratified bootstrap: resample each group independently so that
+        # group membership is preserved across replicates. The naive approach
+        # of resampling the full array and then applying group masks is wrong
+        # because the masks select positions from the original data, not from
+        # the bootstrap sample -- mixing observations across groups.
         ref_mask = (df[protected_col] == groups[0]).to_numpy()
         comp_mask = (df[protected_col] == groups[1]).to_numpy()
 
@@ -283,14 +288,26 @@ def demographic_parity_ratio(
         if log_space:
             pred_arr = np.log(pred_arr)
 
-        def _stat(vals: np.ndarray, wts: np.ndarray) -> float:
-            m_ref = float(np.average(vals[ref_mask], weights=wts[ref_mask]))
-            m_comp = float(np.average(vals[comp_mask], weights=wts[comp_mask]))
-            return m_comp - m_ref
+        ref_pred = pred_arr[ref_mask]
+        ref_exp = exp_arr[ref_mask]
+        comp_pred = pred_arr[comp_mask]
+        comp_exp = exp_arr[comp_mask]
 
-        ci_lower, ci_upper = bootstrap_ci(
-            pred_arr, exp_arr, _stat, n_bootstrap=n_bootstrap, ci_level=ci_level
-        )
+        n_ref = len(ref_pred)
+        n_comp = len(comp_pred)
+
+        rng = np.random.default_rng(42)
+        boot_stats = np.empty(n_bootstrap)
+        for i in range(n_bootstrap):
+            idx_ref = rng.integers(0, n_ref, size=n_ref)
+            idx_comp = rng.integers(0, n_comp, size=n_comp)
+            m_ref = float(np.average(ref_pred[idx_ref], weights=ref_exp[idx_ref]))
+            m_comp = float(np.average(comp_pred[idx_comp], weights=comp_exp[idx_comp]))
+            boot_stats[i] = m_comp - m_ref
+
+        alpha = (1.0 - ci_level) / 2.0
+        ci_lower = float(np.quantile(boot_stats, alpha))
+        ci_upper = float(np.quantile(boot_stats, 1.0 - alpha))
 
     return DemographicParityResult(
         protected_col=protected_col,
