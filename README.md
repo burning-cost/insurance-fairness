@@ -173,6 +173,10 @@ report.to_markdown("audit_q4_2024.md")  # write FCA-ready report
 
 Note that `factor_cols` may include factors not used as model inputs. The audit checks for proxy contamination in both model inputs and non-model factors — a factor that is not in the model can still correlate with protected characteristics and inform future model development decisions. In this example, `postcode_district` and `vehicle_group` are included in the audit even though neither is a feature in the fitted model.
 
+---
+
+If this is useful, a ⭐ on GitHub helps others find it.
+
 ## Expected Performance
 
 On a 20,000-policy synthetic UK motor portfolio with known postcode-ethnicity proxy structure (seed=42):
