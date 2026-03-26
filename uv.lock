@@ -587,7 +587,7 @@ wheels = [
 
 [[package]]
 name = "insurance-fairness"
-version = "0.6.3"
+version = "0.6.6"
 source = { editable = "." }
 dependencies = [
     { name = "catboost" },
@@ -638,7 +638,7 @@ requires-dist = [
     { name = "pymoo", marker = "extra == 'pareto'", specifier = ">=0.6.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
-    { name = "scikit-learn", specifier = ">=1.4,<1.6" },
+    { name = "scikit-learn", specifier = ">=1.5" },
     { name = "scipy", specifier = ">=1.12" },
     { name = "statsmodels", specifier = ">=0.14.5" },
 ]
