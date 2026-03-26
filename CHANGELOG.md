@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.6 (2026-03-26)
+- fix: remove `scikit-learn<1.6` upper cap — this constraint blocked co-installation
+  with insurance-causal and other stack libraries that require sklearn>=1.6. Audit of
+  all source files confirmed no usage of `check_X_y(force_all_finite=...)` or any
+  other API removed in sklearn 1.6. The cap was added defensively but was never
+  required. New constraint: `scikit-learn>=1.5`. This unblocks full Burning Cost stack
+  installation in a single environment.
+
 ## v0.6.5 (2026-03-25)
 - fix: IndexError in _build_summary where wmean closure applied full-dataset
   boolean mask to already-sliced group arrays. The wmean helper was defined
