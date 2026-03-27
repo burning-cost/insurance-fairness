@@ -77,23 +77,6 @@ See `examples/quickstart.py` for a fully self-contained example including synthe
 
 ---
 
-## Features
-
-- **Proxy detection** — identifies which rating factors (postcode, vehicle group, occupation) are acting as protected-characteristic proxies using mutual information, CatBoost proxy R², partial correlation, and SHAP-linked price impact
-- **Exposure-weighted bias metrics** — calibration by group (A/E ratio), demographic parity ratio (log-space), disparate impact ratio, equalised odds, Gini by group, Theil index; all weight by earned car-years, not policy count
-- **Counterfactual fairness** — flip protected characteristics and measure premium impact; supports direct flip and LRTW marginalisation
-- **Proxy vulnerability scoring** (`ProxyVulnerabilityScore`) — per-policyholder £ difference between unaware premium and discrimination-free benchmark; TVaR overcharge, parity cost, fairness range
-- **Indirect discrimination audit** (`IndirectDiscriminationAudit`) — five benchmark premiums from Côté et al. (2025): aware, unaware, unawareness, proxy-free, parity-cost; no causal graph required
-- **Multicalibration** (`MulticalibrationAudit`, `IterativeMulticalibrationCorrector`) — audit and iteratively correct pricing models for multicalibration fairness (Denuit, Michaelides & Trufin, 2026)
-- **Marginal fairness correction** (`MarginalFairnessPremium`) — closed-form Stage 2 adjustment of Expected Shortfall, Wang transform, or any distortion risk measure to be marginally fair; no iterative solver (Huang & Pesenti, 2025)
-- **Double fairness** (`DoubleFairnessAudit`) — joint action (Delta_1) and outcome (Delta_2) Pareto optimisation via lexicographic Tchebycheff scalarisation; addresses Consumer Duty Outcome 4 directly (Bian et al., 2026)
-- **Discrimination-insensitive reweighting** (`DiscriminationInsensitiveReweighter`) — training-data weights that achieve X ⊥ A without removing the protected attribute; KL divergence minimisation (Miao & Pesenti, 2026)
-- **Privatised audit** (`PrivatizedFairnessAudit`) — fairness auditing when protected attributes are privatised via local differential privacy or estimated from proxies (Zhang, Liu & Shi, 2025)
-- **Optimal transport** (`optimal_transport` subpackage) — discrimination-free pricing via Lindholm marginalisation, causal path decomposition, Wasserstein barycenter correction
-- **FCA-mapped audit reports** — Markdown with PRIN 2A, TR24/2, Equality Act s.19 cross-references and a sign-off table; suitable for pricing committee packs and FCA file reviews
-
----
-
 ## Installation
 
 ```bash
@@ -114,6 +97,20 @@ pip install "insurance-fairness[pareto]"
 
 ---
 
+## Features
+
+- **Proxy detection** — identifies which rating factors (postcode, vehicle group, occupation) are acting as protected-characteristic proxies using mutual information, CatBoost proxy R², partial correlation, and SHAP-linked price impact
+- **Exposure-weighted bias metrics** — calibration by group (A/E ratio), demographic parity ratio (log-space), disparate impact ratio, equalised odds, Gini by group, Theil index; all weight by earned car-years, not policy count
+- **Counterfactual fairness** — flip protected characteristics and measure premium impact; supports direct flip and LRTW marginalisation
+- **Proxy vulnerability scoring** (`ProxyVulnerabilityScore`) — per-policyholder £ difference between unaware premium and discrimination-free benchmark; TVaR overcharge, parity cost, fairness range
+- **Indirect discrimination audit** (`IndirectDiscriminationAudit`) — five benchmark premiums from Côté et al. (2025): aware, unaware, unawareness, proxy-free, parity-cost; no causal graph required
+- **Multicalibration** (`MulticalibrationAudit`, `IterativeMulticalibrationCorrector`) — audit and iteratively correct pricing models for multicalibration fairness (Denuit, Michaelides & Trufin, 2026)
+- **Marginal fairness correction** (`MarginalFairnessPremium`) — closed-form Stage 2 adjustment of Expected Shortfall, Wang transform, or any distortion risk measure to be marginally fair; no iterative solver (Huang & Pesenti, 2025)
+- **Double fairness** (`DoubleFairnessAudit`) — joint action (Delta_1) and outcome (Delta_2) Pareto optimisation via lexicographic Tchebycheff scalarisation; addresses Consumer Duty Outcome 4 directly (Bian et al., 2026)
+- **Discrimination-insensitive reweighting** (`DiscriminationInsensitiveReweighter`) — training-data weights that achieve X ⊥ A without removing the protected attribute; KL divergence minimisation (Miao & Pesenti, 2026)
+- **Privatised audit** (`PrivatizedFairnessAudit`) — fairness auditing when protected attributes are privatised via local differential privacy or estimated from proxies (Zhang, Liu & Shi, 2025)
+- **Optimal transport** (`optimal_transport` subpackage) — discrimination-free pricing via Lindholm marginalisation, causal path decomposition, Wasserstein barycenter correction
+- **FCA-mapped audit reports** — Markdown with PRIN 2A, TR24/2, Equality Act s.19 cross-references and a sign-off table; suitable for pricing committee packs and FCA file reviews
 ## Expected performance
 
 On a 20,000-policy synthetic UK motor portfolio with a known postcode-ethnicity proxy structure, replicating the Citizens Advice (2022) finding:
