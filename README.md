@@ -1,5 +1,7 @@
 # insurance-fairness
 
+> FCA Consumer Duty and Equality Act 2010 compliance auditing for UK insurance pricing models — proxy discrimination detection, exposure-weighted bias metrics, and FCA-ready Markdown audit reports.
+
 [![PyPI](https://img.shields.io/pypi/v/insurance-fairness)](https://pypi.org/project/insurance-fairness/)
 [![Downloads](https://img.shields.io/pypi/dm/insurance-fairness)](https://pypi.org/project/insurance-fairness/)
 [![Python](https://img.shields.io/pypi/pyversions/insurance-fairness)](https://pypi.org/project/insurance-fairness/)
@@ -18,7 +20,7 @@ Every UK pricing team faces the same problem: postcode encodes protected-charact
 
 The compliance risk is live. TR24/2 (August 2024) found most Fair Value Assessments were "high-level summaries with little substance". Six Consumer Duty investigations are now open, two of which directly involve insurers on fair value grounds.
 
-Every other fairness library is a methodology tool: it corrects model outputs to satisfy a chosen fairness criterion. This one is a compliance audit tool. It produces documented, evidenced, FCA-mapped analysis that a pricing committee can sign off and that will stand up to an FCA file review.
+This is a compliance audit tool, not a methodology library. It produces documented, evidenced, FCA-mapped analysis that a pricing committee can sign off and that will stand up to an FCA file review. Fairlearn and AIF360 help you satisfy a chosen fairness criterion — they do not answer the question: "Can I demonstrate to the FCA that this model does not constitute indirect discrimination under Section 19 of the Equality Act?"
 
 ---
 
@@ -45,23 +47,15 @@ Takes a fitted pricing model and a dataset with protected characteristics. Feeds
 
 ```python
 import polars as pl
-from catboost import CatBoostRegressor
 from insurance_fairness import FairnessAudit
 
-# df: your pricing DataFrame with columns for claims, exposure, rating factors,
-# and protected characteristics
-catboost_model = CatBoostRegressor(iterations=200, verbose=0)
-catboost_model.fit(
-    df[["postcode_district", "vehicle_age", "ncd_years", "vehicle_group"]].to_pandas(),
-    (df["claim_amount"] / df["exposure"]).to_pandas(),
-    cat_features=["postcode_district"],
-)
-
+# df: policy-level DataFrame with claims, exposure, rating factors,
+# and a protected characteristic column (or ONS-derived area proxy)
 audit = FairnessAudit(
     model=catboost_model,
     data=df,
-    protected_cols=["gender"],        # or ethnicity proxy derived from ONS LSOA data
-    prediction_col="predicted_rate",  # rate (claims per unit exposure), not total
+    protected_cols=["gender"],
+    prediction_col="predicted_rate",
     outcome_col="claim_amount",
     exposure_col="exposure",
     factor_cols=["postcode_district", "vehicle_age", "ncd_years", "vehicle_group"],
@@ -69,7 +63,11 @@ audit = FairnessAudit(
     run_proxy_detection=True,
 )
 report = audit.run()
-report.summary()                         # console: RAG status, metrics, flagged factors
+report.summary()
+# Overall RAG: RED
+# Proxy detection: postcode_district — proxy R²=0.62 [RED], MI=0.41 [RED]
+# Calibration by group (gender): max A/E disparity 0.081 [AMBER]
+# Demographic parity log-ratio: +0.082 (ratio 1.085) [AMBER]
 report.to_markdown("audit_q4_2024.md")  # FCA-ready Markdown with sign-off table
 ```
 
@@ -111,6 +109,9 @@ pip install "insurance-fairness[pareto]"
 - **Privatised audit** (`PrivatizedFairnessAudit`) — fairness auditing when protected attributes are privatised via local differential privacy or estimated from proxies (Zhang, Liu & Shi, 2025)
 - **Optimal transport** (`optimal_transport` subpackage) — discrimination-free pricing via Lindholm marginalisation, causal path decomposition, Wasserstein barycenter correction
 - **FCA-mapped audit reports** — Markdown with PRIN 2A, TR24/2, Equality Act s.19 cross-references and a sign-off table; suitable for pricing committee packs and FCA file reviews
+
+---
+
 ## Expected performance
 
 On a 20,000-policy synthetic UK motor portfolio with a known postcode-ethnicity proxy structure, replicating the Citizens Advice (2022) finding:
@@ -322,16 +323,6 @@ Proxy discrimination diagnostics with D_proxy scalar, Shapley attribution, and p
 ```python
 from insurance_fairness.diagnostics import ProxyDiscriminationAudit
 ```
-
----
-
-## Why not a general-purpose fairness library?
-
-Fairlearn, AIF360, and similar tools are methodology libraries: they help you satisfy a chosen fairness criterion. They do not answer the question a UK pricing actuary needs to answer: "Can I demonstrate to the FCA that this model does not constitute indirect discrimination under Section 19 of the Equality Act, and that it delivers fair value under Consumer Duty Outcome 4?"
-
-None of the general-purpose libraries handle the multiplicative frequency/severity structure, exposure-weighted metrics, or the log-link world that pricing actuaries work in. None produce a Markdown audit report with regulatory mapping and a sign-off table. None distinguish between action fairness (FCA expectation at quoting) and outcome fairness (Consumer Duty Outcome 4 — equivalent value after the policy is live).
-
-If you are a researcher exploring optimal transport fairness methods, there are better tools for that purpose. If you are a UK pricing actuary with Consumer Duty obligations and a pricing committee to satisfy, this is the only tool built for your problem.
 
 ---
 

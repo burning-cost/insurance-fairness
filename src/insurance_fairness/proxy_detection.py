@@ -49,7 +49,7 @@ from insurance_fairness._utils import (
 
 def _encode_series(series: pl.Series) -> np.ndarray:
     """Encode a Polars Series to a float numpy array, label-encoding strings."""
-    if series.dtype in (pl.String, pl.String, pl.Categorical):
+    if series.dtype in (pl.String, pl.Categorical, pl.Enum):
         return series.cast(pl.Categorical).to_physical().to_numpy().astype(float)
     return series.to_numpy().astype(float)
 
@@ -400,7 +400,7 @@ def partial_correlation(
         validate_columns(df, *control_cols)
 
     def _encode(series: pl.Series) -> np.ndarray:
-        if series.dtype in (pl.String, pl.String, pl.Categorical):
+        if series.dtype in (pl.String, pl.Categorical, pl.Enum):
             return series.cast(pl.Categorical).to_physical().to_numpy().astype(float)
         return series.to_numpy().astype(float)
 
