@@ -4,15 +4,13 @@
 [![Downloads](https://img.shields.io/pypi/dm/insurance-fairness)](https://pypi.org/project/insurance-fairness/)
 [![Python](https://img.shields.io/pypi/pyversions/insurance-fairness)](https://pypi.org/project/insurance-fairness/)
 [![Tests](https://github.com/burning-cost/insurance-fairness/actions/workflows/tests.yml/badge.svg)](https://github.com/burning-cost/insurance-fairness/actions/workflows/tests.yml)
-[![License](https://img.shields.io/badge/license-MIT-green)]()
+[![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/burning-cost/insurance-fairness/blob/main/LICENSE)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/burning-cost/burning-cost-examples/blob/main/notebooks/burning-cost-in-30-minutes.ipynb)
 [![nbviewer](https://img.shields.io/badge/render-nbviewer-orange)](https://nbviewer.org/github/burning-cost/insurance-fairness/blob/main/notebooks/quickstart.ipynb)
 
-> Questions or feedback? Start a [Discussion](https://github.com/burning-cost/insurance-fairness/discussions). Found it useful? A star helps others find it.
+Your pricing model is probably using postcode as a rating factor — and postcode correlates with ethnicity. insurance-fairness produces the documented, exposure-weighted audit trail your pricing committee can sign off and that will stand up to an FCA file review.
 
-Your pricing model is probably using postcode as a rating factor — and postcode correlates with ethnicity. The FCA's Consumer Duty (PS22/9) requires you to demonstrate this is not producing indirect discrimination under Section 19 of the Equality Act 2010, and the FCA's thematic review TR24/2 found most insurers' Fair Value Assessments could not do this. insurance-fairness produces the documented, exposure-weighted audit trail your pricing committee can sign off.
-
-The FCA's Consumer Duty (PS22/9, live July 2023) requires firms to monitor whether their products deliver fair value for different groups of customers. The FCA's thematic review TR24/2 (August 2024) found most insurers' Fair Value Assessments were "high-level summaries with little substance" — and the FCA has since opened six Consumer Duty investigations, two of which directly involve insurers on fair value grounds. The compliance risk is live, not theoretical.
+The FCA's Consumer Duty (PS22/9, live July 2023) requires firms to demonstrate their products deliver fair value for different groups of customers. The FCA's thematic review TR24/2 (August 2024) found most insurers' Fair Value Assessments were "high-level summaries with little substance" — and the FCA has since opened six Consumer Duty investigations, two of which directly involve insurers on fair value grounds. Section 19 of the Equality Act 2010 independently prohibits indirect discrimination. The compliance risk is live, not theoretical.
 
 The mechanism creating fair value failures is proxy discrimination. Your postcode rating factor is probably an ethnicity proxy: Citizens Advice (2022) estimated a £280/year ethnicity penalty in UK motor insurance, totalling £213m per year, driven by postcodes that encode protected-characteristic information without the insurer's pricing team ever modelling ethnicity directly. Proving — or disproving — that this is happening in your book is what proxy detection is for. The Equality Act 2010 Section 19 independently prohibits this as indirect discrimination.
 
@@ -38,7 +36,7 @@ The distinction matters. A library that corrects model outputs to equalise demog
 
 This library does those things. If you are a researcher exploring optimal transport methods for fairness correction, there are better tools for that purpose. If you are a UK pricing actuary with Consumer Duty obligations and an FCA inspection on the horizon, this is the only tool built for your problem.
 
-## Why bother
+## Performance benchmarks
 
 Benchmarked on synthetic UK motor data (50,000 policies) with a known postcode-ethnicity proxy issue, replicating the Citizens Advice (2022) finding structure.
 
@@ -175,7 +173,6 @@ Note that `factor_cols` may include factors not used as model inputs. The audit 
 
 ---
 
-If this is useful, a ⭐ on GitHub helps others find it.
 
 ## Expected Performance
 
