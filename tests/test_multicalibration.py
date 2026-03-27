@@ -25,7 +25,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from insurance_fairness.multicalibration import MulticalibrationAudit, MulticalibrationReport
+from insurance_fairness.multicalibration import IterativeMulticalibrationCorrector, MulticalibrationAudit, MulticalibrationReport
 
 
 # ---------------------------------------------------------------------------
@@ -437,8 +437,6 @@ class TestBinLevelAE:
 # ---------------------------------------------------------------------------
 # Test: IterativeMulticalibrationCorrector (Task 2)
 # ---------------------------------------------------------------------------
-
-from insurance_fairness.multicalibration import IterativeMulticalibrationCorrector
 
 
 class TestIterativeMulticalibrationCorrectorBasic:
