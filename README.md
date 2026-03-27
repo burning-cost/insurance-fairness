@@ -48,7 +48,15 @@ import polars as pl
 from catboost import CatBoostRegressor
 from insurance_fairness import FairnessAudit
 
-# df: your pricing DataFrame with predictions already computed
+# df: your pricing DataFrame with columns for claims, exposure, rating factors,
+# and protected characteristics
+catboost_model = CatBoostRegressor(iterations=200, verbose=0)
+catboost_model.fit(
+    df[["postcode_district", "vehicle_age", "ncd_years", "vehicle_group"]].to_pandas(),
+    (df["claim_amount"] / df["exposure"]).to_pandas(),
+    cat_features=["postcode_district"],
+)
+
 audit = FairnessAudit(
     model=catboost_model,
     data=df,
