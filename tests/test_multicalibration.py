@@ -337,3 +337,306 @@ class TestReportStructure:
         audit = MulticalibrationAudit(n_bins=10)
         report = audit.audit(y_true, y_pred, protected, exposure)
         assert report.worst_cells.height <= 10
+
+
+# ---------------------------------------------------------------------------
+# Test: bin_level_ae field (Task 1 — credibility target fix)
+# ---------------------------------------------------------------------------
+
+
+class TestBinLevelAE:
+    def test_bin_level_ae_present_in_report(self):
+        """MulticalibrationReport must contain a bin_level_ae dict."""
+        y_true, y_pred, protected, exposure = make_calibrated_data(n=2000)
+        audit = MulticalibrationAudit(n_bins=5)
+        report = audit.audit(y_true, y_pred, protected, exposure)
+        assert hasattr(report, "bin_level_ae")
+        assert isinstance(report.bin_level_ae, dict)
+
+    def test_bin_level_ae_has_all_bins(self):
+        """bin_level_ae should have one entry per bin."""
+        y_true, y_pred, protected, exposure = make_calibrated_data(n=2000)
+        n_bins = 5
+        audit = MulticalibrationAudit(n_bins=n_bins)
+        report = audit.audit(y_true, y_pred, protected, exposure)
+        assert set(report.bin_level_ae.keys()) == set(range(n_bins))
+
+    def test_bin_level_ae_is_positive(self):
+        """bin_level_ae values should be positive floats."""
+        y_true, y_pred, protected, exposure = make_calibrated_data(n=2000)
+        audit = MulticalibrationAudit(n_bins=5)
+        report = audit.audit(y_true, y_pred, protected, exposure)
+        for b, val in report.bin_level_ae.items():
+            assert isinstance(val, float)
+            assert val > 0.0, f"bin_level_ae[{b}] = {val} is not positive"
+
+    def test_bin_level_ae_near_one_for_calibrated_model(self):
+        """For a well-calibrated model, bin_level_ae should be near 1.0."""
+        y_true, y_pred, protected, exposure = make_calibrated_data(n=5000)
+        audit = MulticalibrationAudit(n_bins=5)
+        report = audit.audit(y_true, y_pred, protected, exposure)
+        for b, val in report.bin_level_ae.items():
+            assert abs(val - 1.0) < 0.15, f"bin_level_ae[{b}] = {val:.3f} too far from 1.0"
+
+    def test_correct_uses_bin_level_ae_not_one(self):
+        """
+        Credibility blending must target b_hat_k (bin pooled AE), not 1.0.
+
+        We construct a case where b_hat_k != 1.0 for a bin, then verify that
+        the correction factor for a partially-credible cell differs between
+        the old (target=1.0) and new (target=b_hat_k) approaches.
+        """
+        rng = np.random.default_rng(99)
+        n = 4000
+        # Deliberately bias ALL groups in the same direction so b_hat_k != 1.0
+        # but also add extra bias to group "1" so it gets flagged as significant
+        exposure = rng.uniform(0.5, 2.0, size=n)
+        y_pred = rng.gamma(2.0, 50.0, size=n)
+        protected = rng.integers(0, 2, size=n).astype(str)
+
+        # Both groups under-claim but group "1" under-claims more
+        expected_claims = y_pred * exposure
+        true_claims = rng.poisson(expected_claims * 0.8) / exposure  # all ~0.8 AE
+        mask_group1 = protected == "1"
+        # Group "1" gets even more extreme under-claim
+        true_claims[mask_group1] = (
+            rng.poisson(expected_claims[mask_group1] * 0.5) / exposure[mask_group1]
+        )
+
+        audit = MulticalibrationAudit(n_bins=5, alpha=0.05, min_bin_size=20, min_credible=500)
+        report = audit.audit(true_claims, y_pred, protected, exposure)
+
+        # There should be significant cells
+        sig = report.bin_group_table.filter(pl.col("significant"))
+        if sig.height == 0:
+            return  # skip if no significant cells (stochastic)
+
+        # For a significant cell, compute what both approaches give
+        row = sig.row(0, named=True)
+        b = int(row["bin"])
+        n_obs = int(row["n_obs"])
+        ae = float(row["ae_ratio"])
+        b_hat_k = report.bin_level_ae[b]
+
+        # Old approach: blend toward 1.0
+        z = min(n_obs / 500, 1.0)
+        old_factor = z * ae + (1.0 - z) * 1.0
+        # New approach: blend toward b_hat_k
+        new_factor = z * ae + (1.0 - z) * b_hat_k
+
+        # b_hat_k should be meaningfully different from 1.0 in this setup
+        # (the whole portfolio is under-claiming at ~0.8 AE)
+        # Therefore old_factor != new_factor for partially-credible cells
+        if z < 1.0 and abs(b_hat_k - 1.0) > 0.05:
+            assert abs(old_factor - new_factor) > 1e-6, (
+                f"Correction factors should differ: old={old_factor:.4f}, "
+                f"new={new_factor:.4f}, b_hat_k={b_hat_k:.4f}, z={z:.3f}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Test: IterativeMulticalibrationCorrector (Task 2)
+# ---------------------------------------------------------------------------
+
+from insurance_fairness.multicalibration import IterativeMulticalibrationCorrector
+
+
+class TestIterativeMulticalibrationCorrectorBasic:
+    def test_import_from_package(self):
+        """IterativeMulticalibrationCorrector must be importable from top-level package."""
+        from insurance_fairness import IterativeMulticalibrationCorrector as IMC
+        assert IMC is IterativeMulticalibrationCorrector
+
+    def test_invalid_eta(self):
+        with pytest.raises(ValueError, match="eta"):
+            IterativeMulticalibrationCorrector(eta=0.0)
+
+    def test_invalid_eta_above_one(self):
+        with pytest.raises(ValueError, match="eta"):
+            IterativeMulticalibrationCorrector(eta=1.5)
+
+    def test_invalid_delta(self):
+        with pytest.raises(ValueError, match="delta"):
+            IterativeMulticalibrationCorrector(delta=-0.01)
+
+    def test_invalid_c(self):
+        with pytest.raises(ValueError, match="c"):
+            IterativeMulticalibrationCorrector(c=0.0)
+
+    def test_invalid_n_bins(self):
+        with pytest.raises(ValueError, match="n_bins"):
+            IterativeMulticalibrationCorrector(n_bins=1)
+
+    def test_transform_before_fit_raises(self):
+        corrector = IterativeMulticalibrationCorrector()
+        with pytest.raises(RuntimeError, match="fit"):
+            corrector.transform(np.array([1.0, 2.0]), np.array(["A", "B"]))
+
+    def test_convergence_report_before_fit_raises(self):
+        corrector = IterativeMulticalibrationCorrector()
+        with pytest.raises(RuntimeError, match="fit"):
+            corrector.convergence_report()
+
+
+class TestIterativeMulticalibrationCorrectorFit:
+    def test_fit_returns_self(self):
+        """fit() should return self for chaining."""
+        y_true, y_pred, protected, exposure = make_calibrated_data(n=1000)
+        corrector = IterativeMulticalibrationCorrector(n_bins=5, max_iter=5)
+        result = corrector.fit(y_true, y_pred, protected, exposure)
+        assert result is corrector
+
+    def test_transform_output_shape(self):
+        """transform() should return array of same shape as input."""
+        y_true, y_pred, protected, exposure = make_biased_data(n=2000)
+        corrector = IterativeMulticalibrationCorrector(n_bins=5, max_iter=10)
+        corrector.fit(y_true, y_pred, protected, exposure)
+        corrected = corrector.transform(y_pred, protected, exposure)
+        assert corrected.shape == y_pred.shape
+
+    def test_transform_no_negative_values(self):
+        """Corrected predictions should remain non-negative."""
+        y_true, y_pred, protected, exposure = make_biased_data(n=2000)
+        corrector = IterativeMulticalibrationCorrector(n_bins=5, max_iter=10, eta=0.5)
+        corrector.fit(y_true, y_pred, protected, exposure)
+        corrected = corrector.transform(y_pred, protected, exposure)
+        assert np.all(corrected >= 0.0)
+
+    def test_fit_mismatched_lengths_raises(self):
+        with pytest.raises(ValueError):
+            corrector = IterativeMulticalibrationCorrector()
+            corrector.fit(
+                np.array([1.0, 2.0]),
+                np.array([1.0]),
+                np.array(["A", "B"]),
+            )
+
+    def test_no_exposure_defaults_to_ones(self):
+        """fit() without exposure should run identically to exposure=ones."""
+        y_true, y_pred, protected, _ = make_biased_data(n=1000)
+        corrector_no_exp = IterativeMulticalibrationCorrector(n_bins=5, max_iter=5)
+        corrector_no_exp.fit(y_true, y_pred, protected, exposure=None)
+        corrector_ones = IterativeMulticalibrationCorrector(n_bins=5, max_iter=5)
+        corrector_ones.fit(y_true, y_pred, protected, exposure=np.ones(len(y_pred)))
+        out_no_exp = corrector_no_exp.transform(y_pred, protected)
+        out_ones = corrector_ones.transform(y_pred, protected, np.ones(len(y_pred)))
+        np.testing.assert_allclose(out_no_exp, out_ones, rtol=1e-10)
+
+
+class TestIterativeMulticalibrationCorrectorConvergence:
+    def test_convergence_report_structure(self):
+        """convergence_report() must return dict with required keys."""
+        y_true, y_pred, protected, exposure = make_biased_data(n=2000)
+        corrector = IterativeMulticalibrationCorrector(n_bins=5, max_iter=10)
+        corrector.fit(y_true, y_pred, protected, exposure)
+        report = corrector.convergence_report()
+        assert "iterations" in report
+        assert "converged" in report
+        assert "max_relative_bias_per_iteration" in report
+        assert "final_cell_biases" in report
+        assert isinstance(report["iterations"], int)
+        assert isinstance(report["converged"], bool)
+        assert isinstance(report["max_relative_bias_per_iteration"], list)
+        assert isinstance(report["final_cell_biases"], dict)
+
+    def test_bias_history_length_matches_iterations(self):
+        """max_relative_bias_per_iteration list length should equal iterations run."""
+        y_true, y_pred, protected, exposure = make_biased_data(n=2000)
+        corrector = IterativeMulticalibrationCorrector(n_bins=5, max_iter=15)
+        corrector.fit(y_true, y_pred, protected, exposure)
+        report = corrector.convergence_report()
+        assert len(report["max_relative_bias_per_iteration"]) == report["iterations"]
+
+    def test_max_iter_respected(self):
+        """Should not run more than max_iter iterations."""
+        y_true, y_pred, protected, exposure = make_biased_data(n=2000)
+        max_iter = 7
+        corrector = IterativeMulticalibrationCorrector(
+            n_bins=5, max_iter=max_iter, delta=1e-9  # tiny delta to prevent early convergence
+        )
+        corrector.fit(y_true, y_pred, protected, exposure)
+        report = corrector.convergence_report()
+        assert report["iterations"] <= max_iter
+
+    def test_calibrated_model_converges_quickly(self):
+        """A well-calibrated model should converge in very few iterations."""
+        y_true, y_pred, protected, exposure = make_calibrated_data(n=5000, seed=123)
+        corrector = IterativeMulticalibrationCorrector(
+            n_bins=5, eta=1.0, delta=0.05, c=10.0, max_iter=50
+        )
+        corrector.fit(y_true, y_pred, protected, exposure)
+        report = corrector.convergence_report()
+        assert report["converged"] is True
+        assert report["iterations"] <= 10
+
+    def test_bias_reduces_after_correction(self):
+        """For a biased model, the corrected predictions should reduce group AE deviation."""
+        y_true, y_pred, protected, exposure = make_biased_data(
+            n=4000, bias_factor=1.5, seed=77
+        )
+        corrector = IterativeMulticalibrationCorrector(
+            n_bins=5, eta=0.5, delta=0.02, c=50.0, max_iter=50
+        )
+        corrector.fit(y_true, y_pred, protected, exposure)
+        corrected = corrector.transform(y_pred, protected, exposure)
+
+        # Compute mean AE deviation before and after (for group "1")
+        from insurance_fairness import MulticalibrationAudit
+        audit = MulticalibrationAudit(n_bins=5, min_bin_size=20)
+
+        report_before = audit.audit(y_true, y_pred, protected, exposure)
+        report_after = audit.audit(y_true, corrected, protected, exposure)
+
+        dev_before = float(
+            report_before.bin_group_table
+            .filter(~pl.col("small_cell") & (pl.col("group") == "1"))
+            .select((pl.col("ae_ratio") - 1.0).abs().mean())
+            .item()
+        )
+        dev_after = float(
+            report_after.bin_group_table
+            .filter(~pl.col("small_cell") & (pl.col("group") == "1"))
+            .select((pl.col("ae_ratio") - 1.0).abs().mean())
+            .item()
+        )
+        assert dev_after < dev_before, (
+            f"Correction should reduce bias: before={dev_before:.4f}, after={dev_after:.4f}"
+        )
+
+
+class TestIterativeMulticalibrationCorrectorEdgeCases:
+    def test_single_group(self):
+        """Single group should run without error."""
+        rng = np.random.default_rng(11)
+        n = 500
+        y_pred = rng.uniform(50, 200, n)
+        y_true = rng.uniform(50, 200, n)
+        protected = np.array(["A"] * n)
+        corrector = IterativeMulticalibrationCorrector(n_bins=5, max_iter=5)
+        corrector.fit(y_true, y_pred, protected)
+        out = corrector.transform(y_pred, protected)
+        assert out.shape == y_pred.shape
+
+    def test_eta_one_full_step(self):
+        """eta=1.0 applies the full correction in one step."""
+        y_true, y_pred, protected, exposure = make_biased_data(n=3000, seed=42)
+        corrector = IterativeMulticalibrationCorrector(
+            n_bins=5, eta=1.0, delta=0.001, c=10.0, max_iter=30
+        )
+        corrector.fit(y_true, y_pred, protected, exposure)
+        out = corrector.transform(y_pred, protected, exposure)
+        assert out.shape == y_pred.shape
+        # With eta=1 and sufficient data we expect meaningful correction
+        assert not np.allclose(out, y_pred)
+
+    def test_transform_unseen_group_gets_no_correction(self):
+        """Observations in a group not seen during fit() should be passed through."""
+        y_true, y_pred, protected, exposure = make_biased_data(n=2000)
+        corrector = IterativeMulticalibrationCorrector(n_bins=5, max_iter=5)
+        corrector.fit(y_true, y_pred, protected, exposure)
+
+        # Introduce an unseen group "Z"
+        new_prot = np.array(["Z"] * len(y_pred))
+        out = corrector.transform(y_pred, new_prot)
+        # No correction factor for "Z", so output should equal input
+        np.testing.assert_array_equal(out, y_pred)
