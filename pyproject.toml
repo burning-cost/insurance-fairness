@@ -72,11 +72,11 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://burning-cost.github.io/insurance-fairness"
+Homepage = "https://burning-cost.github.io/"
 Repository = "https://github.com/burning-cost/insurance-fairness"
 Changelog = "https://github.com/burning-cost/insurance-fairness/releases"
 Documentation = "https://burning-cost.github.io/insurance-fairness"
-Issues = "https://github.com/burning-cost/insurance-fairness/issues"
+"Bug Tracker" = "https://github.com/burning-cost/insurance-fairness/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/insurance_fairness"]
