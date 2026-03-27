@@ -276,7 +276,7 @@ class PathDecomposer:
             if len(ref_rows) == 0:
                 ref_rows = X
             series = ref_rows[col]
-            if series.dtype in (pl.Utf8, pl.String, pl.Categorical, pl.Boolean):
+            if series.dtype in (pl.String, pl.String, pl.Categorical, pl.Boolean):
                 # Mode: most frequent value
                 counts = series.value_counts(sort=True)
                 return counts[col][0]

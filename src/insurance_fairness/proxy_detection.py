@@ -49,7 +49,7 @@ from insurance_fairness._utils import (
 
 def _encode_series(series: pl.Series) -> np.ndarray:
     """Encode a Polars Series to a float numpy array, label-encoding strings."""
-    if series.dtype in (pl.Utf8, pl.String, pl.Categorical):
+    if series.dtype in (pl.String, pl.String, pl.Categorical):
         return series.cast(pl.Categorical).to_physical().to_numpy().astype(float)
     return series.to_numpy().astype(float)
 
@@ -178,7 +178,7 @@ def proxy_r2_scores(
 
         # Identify categorical: string or low-cardinality integer
         col_dtype = df[col].dtype
-        is_cat = col_dtype == pl.Utf8 or col_dtype == pl.String or col_dtype == pl.Categorical
+        is_cat = col_dtype == pl.String or col_dtype == pl.String or col_dtype == pl.Categorical
 
         # Handle string categories for CatBoost
         if is_cat:
@@ -310,7 +310,7 @@ def mutual_information_scores(
 
     for i, col in enumerate(factor_cols):
         col_dtype = df[col].dtype
-        is_cat = col_dtype in (pl.Utf8, pl.String, pl.Categorical)
+        is_cat = col_dtype in (pl.String, pl.String, pl.Categorical)
         if is_cat:
             # Encode strings as integer codes
             codes = df[col].cast(pl.Categorical).to_physical().to_numpy().astype(float)
@@ -400,7 +400,7 @@ def partial_correlation(
         validate_columns(df, *control_cols)
 
     def _encode(series: pl.Series) -> np.ndarray:
-        if series.dtype in (pl.Utf8, pl.String, pl.Categorical):
+        if series.dtype in (pl.String, pl.String, pl.Categorical):
             return series.cast(pl.Categorical).to_physical().to_numpy().astype(float)
         return series.to_numpy().astype(float)
 
@@ -507,7 +507,7 @@ def shap_proxy_scores(
         # Identify categorical columns
         cat_cols = [
             c for c in factor_cols
-            if df[c].dtype in (pl.Utf8, pl.String, pl.Categorical)
+            if df[c].dtype in (pl.String, pl.String, pl.Categorical)
         ]
         X_pd = df.select(factor_cols).to_pandas()
         pool = Pool(X_pd, cat_features=cat_cols)

@@ -179,7 +179,7 @@ def counterfactual_fairness(
         X_pd = df.select(feature_cols).to_pandas()
         cat_cols = [
             c for c in feature_cols
-            if df[c].dtype in (pl.Utf8, pl.String, pl.Categorical)
+            if df[c].dtype in (pl.String, pl.String, pl.Categorical)
         ]
         pool = Pool(X_pd, cat_features=cat_cols)
         orig_preds = model.predict(pool).astype(float)
@@ -270,7 +270,7 @@ def _direct_flip(
 
     cat_cols = [
         c for c in feature_cols
-        if df[c].dtype in (pl.Utf8, pl.String, pl.Categorical)
+        if df[c].dtype in (pl.String, pl.String, pl.Categorical)
     ]
     X_pd = df_flipped.select(feature_cols).to_pandas()
     pool = Pool(X_pd, cat_features=cat_cols)
@@ -325,7 +325,7 @@ def _lrtw_marginalise(
         )
         cat_cols = [
             c for c in feature_cols
-            if df[c].dtype in (pl.Utf8, pl.String, pl.Categorical)
+            if df[c].dtype in (pl.String, pl.String, pl.Categorical)
         ]
         X_pd = df.select(feature_cols).to_pandas()
         pool = Pool(X_pd, cat_features=cat_cols)
@@ -333,7 +333,7 @@ def _lrtw_marginalise(
 
     cat_cols = [
         c for c in feature_cols
-        if df[c].dtype in (pl.Utf8, pl.String, pl.Categorical)
+        if df[c].dtype in (pl.String, pl.String, pl.Categorical)
     ]
 
     accumulated = np.zeros(n, dtype=float)

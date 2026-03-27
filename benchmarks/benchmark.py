@@ -186,7 +186,7 @@ print()
 # Encode categorical factors for correlation
 def _encode_simple(col_name: str) -> np.ndarray:
     s = df[col_name]
-    if s.dtype in (pl.String, pl.Utf8, pl.Categorical):
+    if s.dtype in (pl.String, pl.String, pl.Categorical):
         return s.cast(pl.Categorical).to_physical().to_numpy().astype(float)
     return s.to_numpy().astype(float)
 
