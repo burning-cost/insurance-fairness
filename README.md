@@ -785,6 +785,15 @@ Proxy detection is only useful if it connects to real money. On the benchmark po
 
 At n=20,000 policies and ~7,500 high-diversity policyholders, the total annual premium loading attributable to the postcode-proxy channel is approximately £500,000-600,000. This is the order of magnitude of the Citizens Advice (2022) estimate for the UK market (£213m total, ~£280 per policy per year).
 
+## External Dataset Validation: ausprivauto0405
+
+The audit pipeline has been validated against a real published insurance dataset with an explicit gender field. **ausprivauto0405** contains 67,856 Australian private motor policies (2004–05) from the CASdatasets R package (Dutang & Charpentier, 2024), with columns for exposure, vehicle value, vehicle age, vehicle body type, gender, driver age, claim occurrence, claim count, and claim amount.
+
+The benchmark notebook ([`notebooks/ausprivauto_fairness_databricks.py`](notebooks/ausprivauto_fairness_databricks.py)) fits a CatBoost claim frequency model with gender excluded from the rating factors, then runs the full audit stack: `FairnessAudit` (demographic parity, calibration, disparate impact, proxy detection), `MulticalibrationAudit` (calibration within gender-by-risk-decile cells), and `IndirectDiscriminationAudit` (proxy vulnerability score per Côté et al., 2025). This exercises the library on real distributional structure — not on a synthetic DGP designed to produce a clean result.
+
+Note: ausprivauto0405 is Australian motor data. It is used for methodology validation only — not as a benchmark for UK Equality Act 2010 compliance.
+
+
 Run ======================================================================
 Benchmark: Proxy discrimination detection (insurance-fairness)
 ======================================================================
