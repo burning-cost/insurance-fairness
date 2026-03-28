@@ -10,7 +10,7 @@
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/burning-cost/burning-cost-examples/blob/main/notebooks/burning-cost-in-30-minutes.ipynb)
 [![nbviewer](https://img.shields.io/badge/render-nbviewer-orange)](https://nbviewer.org/github/burning-cost/insurance-fairness/blob/main/notebooks/quickstart.ipynb)
 
-Your postcode rating factor probably correlates with ethnicity. The FCA's Consumer Duty (PS22/9) requires you to demonstrate this is not producing indirect discrimination under Section 19 of the Equality Act 2010 — and the FCA thematic review TR24/2 found most insurers' Fair Value Assessments could not do this. insurance-fairness produces the documented, exposure-weighted audit trail your pricing committee can sign off.
+Your postcode rating factor probably correlates with ethnicity. The FCA's Consumer Duty (PS22/9) requires you to demonstrate this is not producing indirect discrimination under Section 19 of the Equality Act 2010 — and the FCA's multi-firm review of Consumer Duty implementation (2024) found most insurers' Fair Value Assessments could not do this. insurance-fairness produces the documented, exposure-weighted audit trail your pricing committee can sign off.
 
 **Blog post:** [Your Pricing Model Might Be Discriminating](https://burning-cost.github.io/2026/03/07/your-pricing-model-might-be-discriminating/)
 
@@ -18,7 +18,7 @@ Your postcode rating factor probably correlates with ethnicity. The FCA's Consum
 
 Every UK pricing team faces the same problem: postcode encodes protected-characteristic information without anyone ever modelling a protected attribute directly. Citizens Advice (2022) estimated a £280/year ethnicity penalty in UK motor insurance, totalling £213m per year, driven entirely through proxy factors. Proving — or disproving — this is happening in your book is what proxy detection is for.
 
-The compliance risk is live. TR24/2 (August 2024) found most Fair Value Assessments were "high-level summaries with little substance". Six Consumer Duty investigations are now open, two of which directly involve insurers on fair value grounds.
+The compliance risk is live. The FCA's multi-firm review of Consumer Duty implementation (2024) found most Fair Value Assessments were "high-level summaries with little substance". Six Consumer Duty investigations are now open, two of which directly involve insurers on fair value grounds.
 
 This is a compliance audit tool, not a methodology library. It produces documented, evidenced, FCA-mapped analysis that a pricing committee can sign off and that will stand up to an FCA file review. Fairlearn and AIF360 help you satisfy a chosen fairness criterion — they do not answer the question: "Can I demonstrate to the FCA that this model does not constitute indirect discrimination under Section 19 of the Equality Act?"
 
@@ -39,7 +39,7 @@ Takes a fitted pricing model and a dataset with protected characteristics. Feeds
 | Log-space demographic parity | Multiply predictions, take ratios — silently wrong for multiplicative models | `demographic_parity_ratio()` — log-ratio for GLM/GBM multiplicative worlds |
 | Financial impact of discrimination | Not quantified | `ProxyVulnerabilityScore` — per-policyholder £ cost of proxy exploitation |
 | Action vs outcome fairness (Consumer Duty Outcome 4) | Not possible with standard metrics | `DoubleFairnessAudit` — full Pareto front, Tchebycheff scalarisation, FCA evidence pack |
-| Audit report for pricing committee | Manual Word document, no regulatory mapping | `report.to_markdown()` — FCA-mapped Markdown with PRIN 2A, TR24/2 cross-references and sign-off table |
+| Audit report for pricing committee | Manual Word document, no regulatory mapping | `report.to_markdown()` — FCA-mapped Markdown with PRIN 2A, FG22/5 cross-references and sign-off table |
 
 ---
 
@@ -108,9 +108,10 @@ pip install "insurance-fairness[pareto]"
 - **Discrimination-insensitive reweighting** (`DiscriminationInsensitiveReweighter`) — training-data weights that achieve X ⊥ A without removing the protected attribute; KL divergence minimisation (Miao & Pesenti, 2026)
 - **Privatised audit** (`PrivatizedFairnessAudit`) — fairness auditing when protected attributes are privatised via local differential privacy or estimated from proxies (Zhang, Liu & Shi, 2025)
 - **Optimal transport** (`optimal_transport` subpackage) — discrimination-free pricing via Lindholm marginalisation, causal path decomposition, Wasserstein barycenter correction
-- **FCA-mapped audit reports** — Markdown with PRIN 2A, TR24/2, Equality Act s.19 cross-references and a sign-off table; suitable for pricing committee packs and FCA file reviews
+- **FCA-mapped audit reports** — Markdown with PRIN 2A, FG22/5, Equality Act s.19 cross-references and a sign-off table; suitable for pricing committee packs and FCA file reviews
 
 ---
+
 
 ## Expected performance
 
@@ -224,7 +225,7 @@ For models that do not use the protected characteristic directly, use `method="l
 
 ### `double_fairness`
 
-**v0.6.0.** Action fairness (Delta_1) and outcome fairness (Delta_2) are not the same obligation and they can conflict. Minimising premium disparity does not minimise loss ratio disparity. On a 20,000-policy synthetic UK motor portfolio, the policy with the most equal premiums produced the most unequal loss ratios — the compliance gap TR24/2 described.
+**v0.6.0.** Action fairness (Delta_1) and outcome fairness (Delta_2) are not the same obligation and they can conflict. Minimising premium disparity does not minimise loss ratio disparity. On a 20,000-policy synthetic UK motor portfolio, the policy with the most equal premiums produced the most unequal loss ratios — a compliance gap the FCA's multi-firm review of Consumer Duty implementation (2024) identified.
 
 `DoubleFairnessAudit` recovers the full Pareto front via lexicographic Tchebycheff scalarisation and selects the value-maximising Pareto point as the recommended operating policy:
 

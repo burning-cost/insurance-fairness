@@ -22,7 +22,7 @@
 # MAGIC one worsens the other. The Pareto front is the evidence of the considered trade-off.
 # MAGIC
 # MAGIC **Why this matters for UK compliance:**
-# MAGIC - FCA TR24/2 (2024) cited failure to assess differential post-sale outcomes as a compliance gap
+# MAGIC - FCA Multi-Firm Review of Consumer Duty Implementation (2024) cited failure to assess differential post-sale outcomes as a compliance gap
 # MAGIC - Consumer Duty Outcome 4 asks whether the product delivers fair value — a claims/premium question
 # MAGIC - A pricing team that only checks demographic parity of premiums is answering the wrong question
 # MAGIC
@@ -32,7 +32,7 @@
 # MAGIC **References:**
 # MAGIC - Bian, Z., Wang, L., Shi, C., Qi, Z. (2026). Double Fairness Policy Learning. arXiv:2601.19186v2.
 # MAGIC - FCA Consumer Duty (PS22/9, PRIN 2A), live July 2023.
-# MAGIC - FCA Pricing Practices Thematic Review (TR24/2, August 2024).
+# MAGIC - FCA Multi-Firm Review of Consumer Duty Implementation (2024).
 # MAGIC
 # MAGIC **Date:** 2026-03-21
 # MAGIC **Library version:** 0.6.0
@@ -731,7 +731,7 @@ print("Saved to /tmp/double_fairness_tradeoff.png")
 # MAGIC 1. **Separates action from outcome unfairness.** Delta_1 and Delta_2 are distinct. A
 # MAGIC    pricing team that only looks at Delta_1 (or the demographic parity ratio) is unaware
 # MAGIC    of its position on the outcome fairness dimension. This is the compliance gap
-# MAGIC    TR24/2 described.
+# MAGIC    the FCA's multi-firm review of Consumer Duty implementation (2024) identified.
 # MAGIC
 # MAGIC 2. **Shows the trade-off explicitly.** The Pareto front quantifies the cost of improving
 # MAGIC    each dimension. A pricing committee can make a documented, evidenced choice about where
@@ -810,5 +810,5 @@ print(f"    Minimising action unfairness worsens outcome unfairness by {pct_wors
 print()
 print("Regulatory references:")
 print("  FCA Consumer Duty (PRIN 2A), Outcome 4 (Price and Value).")
-print("  FCA Pricing Practices Thematic Review (TR24/2, 2024).")
+print("  FCA Multi-Firm Review of Consumer Duty Implementation (2024).")
 print("  Bian et al. (2026). arXiv:2601.19186v2.")

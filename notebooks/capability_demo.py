@@ -89,7 +89,7 @@ print("Libraries loaded successfully.")
 # MAGIC ## 2. Synthetic Data
 # MAGIC
 # MAGIC We generate a motor insurance dataset where postcode district is correlated with gender.
-# MAGIC This is a simplified version of the postcode/ethnicity problem the FCA flagged in TR24/2,
+# MAGIC This is a simplified version of the postcode/ethnicity problem the FCA has flagged in its Consumer Duty supervisory work,
 # MAGIC but using gender because it is binary, which makes the demonstration cleaner.
 # MAGIC
 # MAGIC **The known bias in the DGP:**

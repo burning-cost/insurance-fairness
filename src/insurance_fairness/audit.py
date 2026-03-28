@@ -56,7 +56,7 @@ References
 ----------
 FCA Consumer Duty Finalised Guidance FG22/5 (2023).
 FCA Multi-Firm Review of Outcomes Monitoring under the Consumer Duty (2024).
-FCA Thematic Review TR24/2 (2024).
+FCA Multi-Firm Review of Consumer Duty Implementation (2024).
 FCA Evaluation Paper EP25/2 (2025).
 """
 

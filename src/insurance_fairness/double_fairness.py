@@ -11,8 +11,8 @@ policy is live.
 The FCA Consumer Duty (PRIN 2A, PS22/9, live July 2023) requires both.
 Outcome 4 (Price and Value) demands that firms demonstrate their products
 deliver reasonable value across consumer cohorts — not just that pricing
-inputs are non-discriminatory. TR24/2 (2024 thematic review) explicitly
-cited failure to assess differential post-sale outcomes as a compliance gap.
+inputs are non-discriminatory. The FCA's multi-firm review of Consumer Duty implementation (2024)
+explicitly cited failure to assess differential post-sale outcomes as a compliance gap.
 
 ``DoubleFairnessAudit`` operationalises the distinction between:
 
@@ -82,7 +82,7 @@ arXiv:2601.19186v2.
 
 FCA. Consumer Duty (PS22/9, July 2022, effective July 2023).
 
-FCA. Pricing Practices Thematic Review (TR24/2, 2024).
+FCA. Multi-Firm Review of Consumer Duty Implementation (2024).
 """
 
 from __future__ import annotations
@@ -622,7 +622,7 @@ class DoubleFairnessAudit:
             "",
             "Regulatory references:",
             "  FCA Consumer Duty (PRIN 2A), Outcome 4 (Price and Value).",
-            "  FCA Pricing Practices Thematic Review (TR24/2, 2024).",
+            "  FCA Multi-Firm Review of Consumer Duty Implementation (2024).",
             "",
             "Method:",
             "  Bian, Wang, Shi, Qi (2026). Double Fairness Policy Learning.",

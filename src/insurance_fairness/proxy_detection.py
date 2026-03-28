@@ -18,7 +18,7 @@ Three complementary approaches are provided:
 
 Regulatory context
 ------------------
-FCA TR24/2 (2024) and Consumer Duty (PRIN 2A) require firms to satisfy
+FCA Consumer Duty (PRIN 2A) requires firms to satisfy
 themselves that rating factors do not result in systematically worse outcomes
 for groups defined by protected characteristics. Mutual information and proxy
 R-squared are the primary diagnostics; SHAP attribution links proxy correlation

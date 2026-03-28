@@ -173,7 +173,7 @@ is a permitted direct rating factor.
   Discrimination in Insurance Pricing. European Journal of Operational Research.
 - FCA Consumer Duty Finalised Guidance FG22/5 (2023).
 - FCA Multi-Firm Review: Outcomes Monitoring under Consumer Duty (2024).
-- FCA Thematic Review TR24/2 (2024).
+- FCA Multi-Firm Review of Consumer Duty Implementation (2024).
 - FCA Evaluation Paper EP25/2 (2025).
 - Equality Act 2010, Section 19.
 """

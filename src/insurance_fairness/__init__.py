@@ -6,7 +6,7 @@ Proxy discrimination auditing for UK insurance pricing models.
 
 Implements fairness diagnostics and audit reporting aligned with:
 - FCA Consumer Duty (PRIN 2A, live July 2023)
-- FCA TR24/2 (Pricing Practices Thematic Review, 2024)
+- FCA Multi-Firm Review of Consumer Duty Implementation (2024)
 - Equality Act 2010, Section 19 (Indirect Discrimination)
 - ICOBS pricing practices rules
 

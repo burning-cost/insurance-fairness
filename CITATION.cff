@@ -7,13 +7,13 @@ abstract: >
   in UK insurance pricing. Provides FCA Consumer Duty compliance evidence:
   proxy R-squared detection, exposure-weighted parity metrics, discrimination-free
   pricing (Lindholm-Richman-Tsanakas-Wüthrich), and structured Markdown audit
-  reports with regulatory mapping to PRIN 2A and TR24/2.
+  reports with regulatory mapping to PRIN 2A and FCA Consumer Duty FG22/5.
 authors:
   - name: "Burning Cost Contributors"
 url: "https://github.com/burning-cost/insurance-fairness"
 repository-code: "https://github.com/burning-cost/insurance-fairness"
 license: MIT
-version: "0.6.1"
+version: "0.6.8"
 date-released: "2026-03-21"
 keywords:
   - insurance

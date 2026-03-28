@@ -19,7 +19,7 @@
 # MAGIC   loading can survive Section 19 if the risk differential is demonstrably risk-based —
 # MAGIC   but you need the evidence, and you need to have looked.
 # MAGIC - FCA Consumer Duty (PS22/9): Outcome 4 requires firms to demonstrate fair value
-# MAGIC   for different groups of customers. TR24/2 (2024) found most Fair Value Assessments
+# MAGIC   for different groups of customers. the FCA's multi-firm review of Consumer Duty implementation (2024) found most Fair Value Assessments
 # MAGIC   were "high-level summaries with little substance." That is not a safe harbour.
 # MAGIC
 # MAGIC **What this notebook shows:**
@@ -470,7 +470,7 @@ print("  a legitimate aim (actuarially justified risk pricing) — and the evide
 # MAGIC justifies? That requires quantifying both — which is what this library produces.
 # MAGIC
 # MAGIC **FCA Consumer Duty PRIN 2A Outcome 4 (Price and Value):**
-# MAGIC Firms must ensure retail customers receive fair value. TR24/2 (2024) found that most
+# MAGIC Firms must ensure retail customers receive fair value. the FCA's multi-firm review of Consumer Duty implementation (2024) found that most
 # MAGIC insurers' Fair Value Assessments were generic, without the quantitative substance needed
 # MAGIC to defend a finding. A proxy R² of 0.62 with a £70–90/year premium differential is
 # MAGIC exactly the kind of specific, quantified finding that a Fair Value Assessment should
