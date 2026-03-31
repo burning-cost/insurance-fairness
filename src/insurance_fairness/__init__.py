@@ -182,6 +182,35 @@ for multicalibration to be achievable without S::
     print(report.sufficient)        # True if CMI holds
     print(report.interpretation)   # plain-English verdict
 
+v0.8.0 adds :mod: — the full LRTW EJOR 2026
+sensitivity-based proxy discrimination measures. Three classes:
+
+**ProxyDiscriminationMeasure** — scalar PD and UF metrics, closest admissible
+price, and discrimination residual Lambda (LRTW 2026, Definitions 2 and 4)::
+
+    from insurance_fairness.sensitivity import ProxyDiscriminationMeasure
+
+    m = ProxyDiscriminationMeasure()
+    m.fit(y=claims, X=X, D=gender, mu_hat=fitted_prices, weights=exposure)
+    print(f"PD = {m.pd_score:.4f}")   # 0 = no proxy discrimination
+    print(f"UF = {m.uf_score:.4f}")   # 0 = demographic parity
+
+**SobolAttribution** — per-feature first-order and total Sobol PD indices::
+
+    from insurance_fairness.sensitivity import SobolAttribution
+
+    sa = SobolAttribution()
+    sa.fit(m.Lambda, X, pi, exposure, feature_names=["age", "vehicle"])
+    print(sa.attributions_)
+
+**ShapleyAttribution** — CEN-Shapley decomposition summing to PD::
+
+    from insurance_fairness.sensitivity import ShapleyAttribution
+
+    sh = ShapleyAttribution()
+    sh.fit(m.Lambda, X, pi, exposure, feature_names=["age", "vehicle"])
+    print(sh.attributions_["shapley_pd"].sum())   # ≈ PD
+
 Quick start::
 
     import polars as pl
@@ -269,6 +298,7 @@ from insurance_fairness.report import generate_markdown_report
 # Subpackages: import for side-effects / discoverability
 from insurance_fairness import optimal_transport  # noqa: F401
 from insurance_fairness import diagnostics  # noqa: F401
+from insurance_fairness import sensitivity  # noqa: F401
 
 from importlib.metadata import version, PackageNotFoundError
 
@@ -331,4 +361,5 @@ __all__ = [
     # Subpackages (import from subpackage directly)
     "optimal_transport",
     "diagnostics",
+    "sensitivity",
 ]
