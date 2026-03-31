@@ -1096,3 +1096,410 @@ class IsotonicMulticalibrationCorrector:
         return self.fit(y, predictions, sensitive_features, exposure).transform(
             predictions, sensitive_features
         )
+
+
+# ---------------------------------------------------------------------------
+# ProxySufficiencyReport and proxy_sufficiency_test
+# ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass
+class BinSufficiencyResult:
+    """
+    Per-bin result from the proxy sufficiency test.
+
+    Attributes
+    ----------
+    bin_index :
+        Integer bin index (0-based).
+    f_statistic :
+        Weighted one-way ANOVA F-statistic for this bin. NaN if the bin
+        cannot be tested (fewer than 2 non-empty groups, or no variance).
+    p_value :
+        p-value for the F-test. NaN if untestable.
+    group_means :
+        Dict mapping group label (str) to the exposure-weighted mean of Y
+        within this bin for that group.
+    group_exposures :
+        Dict mapping group label to total exposure in this bin-group cell.
+    testable :
+        True if this bin had at least 2 groups with positive exposure and
+        a non-degenerate within-group variance estimate.
+    """
+
+    bin_index: int
+    f_statistic: float
+    p_value: float
+    group_means: dict[str, float]
+    group_exposures: dict[str, float]
+    testable: bool
+
+
+@dataclasses.dataclass
+class ProxySufficiencyReport:
+    """
+    Result of a proxy sufficiency test (Proposition 6.5, Denuit et al. 2026).
+
+    A model satisfies proxy sufficiency for the excluded characteristic S if
+    E[Y | pi(X), S=s] = E[Y | pi(X)] for all s — i.e., the model's predictions
+    already capture all risk variation associated with S. This is the necessary
+    and sufficient condition for multicalibration to be achievable without S.
+
+    Attributes
+    ----------
+    sufficient :
+        True if we fail to reject conditional mean independence at ``alpha``.
+        Equivalently, True means the model captures all risk variation from S
+        through allowed proxies.
+    overall_p_value :
+        Combined p-value from Fisher's method across all testable bins.
+    overall_statistic :
+        Fisher's combined chi-squared statistic (sum of -2 * log(p_i) across
+        testable bins).
+    bin_results :
+        Per-bin F-test results. See :class:`BinSufficiencyResult`.
+    interpretation :
+        One-sentence plain-English summary.
+    alpha :
+        Significance level used.
+    n_bins :
+        Number of prediction bins used.
+    n_testable_bins :
+        Number of bins that were testable (had >= 2 non-empty groups).
+    failing_bins :
+        List of bin indices where the F-test p-value < alpha.
+    """
+
+    sufficient: bool
+    overall_p_value: float
+    overall_statistic: float
+    bin_results: list[BinSufficiencyResult]
+    interpretation: str
+    alpha: float
+    n_bins: int
+    n_testable_bins: int
+    failing_bins: list[int]
+
+
+def proxy_sufficiency_test(
+    y: np.ndarray,
+    predictions: np.ndarray,
+    sensitive_features: np.ndarray,
+    exposure: np.ndarray | None = None,
+    n_bins: int = 10,
+    alpha: float = 0.05,
+    sensitive_name: str | None = None,
+) -> ProxySufficiencyReport:
+    """
+    Test whether a model satisfies proxy sufficiency for an excluded characteristic.
+
+    Implements the conditional mean independence (CMI) check from Proposition 6.5
+    of Denuit, Michaelides & Trufin (2026), arXiv:2603.16317.
+
+    A model satisfies proxy sufficiency for excluded characteristic S if:
+
+        E[Y | pi(X), S=s] = E[Y | pi(X)]   for all s
+
+    This is the condition under which multicalibration is achievable without S
+    in the model. When it fails, the model's predictions do not fully capture
+    the risk variation associated with S, and residual proxy discrimination
+    remains in the premium.
+
+    Method
+    ------
+    1. Bin predictions into ``n_bins`` quantile bins (exposure-weighted).
+    2. Within each bin, run a weighted one-way ANOVA (F-test) comparing
+       exposure-weighted group means E[Y | bin, S=s] across groups s.
+    3. Combine bin-level p-values using Fisher's method to obtain an overall
+       test statistic and p-value.
+
+    The weighted ANOVA F-statistic for each bin is:
+
+        F = (SS_between / df_between) / (SS_within / df_within)
+
+    where the sums of squares are exposure-weighted, and degrees of freedom
+    are (n_groups - 1) and (sum of n_obs_per_group - n_groups) respectively.
+    Bins with fewer than 2 non-empty groups, or with zero within-group
+    variance, are skipped and excluded from the Fisher combination.
+
+    Parameters
+    ----------
+    y :
+        Observed outcomes (claims, losses). Shape (n,).
+    predictions :
+        Model predictions pi(X). Shape (n,). Must be non-negative.
+    sensitive_features :
+        Labels for the excluded characteristic S. Shape (n,). Any hashable type.
+    exposure :
+        Observation weights (years of exposure, policy counts, etc.). Shape (n,).
+        If None, all observations are weighted equally.
+    n_bins :
+        Number of quantile bins for the prediction axis. More bins give finer
+        resolution but reduce within-bin sample sizes. Default 10.
+    alpha :
+        Significance level. The test is rejected (sufficient=False) if the
+        overall Fisher p-value < alpha. Default 0.05.
+    sensitive_name :
+        Name of the sensitive characteristic (used in the interpretation string).
+        If None, defaults to "the excluded characteristic".
+
+    Returns
+    -------
+    ProxySufficiencyReport
+
+    References
+    ----------
+    Denuit, M., Michaelides, M. & Trufin, J. (2026). Multicalibration in
+    Insurance Pricing. arXiv:2603.16317, Proposition 6.5.
+    """
+    y = np.asarray(y, dtype=float)
+    predictions = np.asarray(predictions, dtype=float)
+    sensitive_features = np.asarray(sensitive_features)
+    n = len(y)
+
+    if len(predictions) != n or len(sensitive_features) != n:
+        raise ValueError(
+            "y, predictions, and sensitive_features must have the same length."
+        )
+    if n_bins < 1:
+        raise ValueError("n_bins must be at least 1.")
+    if not 0.0 < alpha < 1.0:
+        raise ValueError("alpha must be strictly between 0 and 1.")
+
+    if exposure is None:
+        w = np.ones(n, dtype=float)
+    else:
+        w = np.asarray(exposure, dtype=float)
+        if len(w) != n:
+            raise ValueError("exposure must have the same length as y.")
+        if np.any(w < 0):
+            raise ValueError("exposure must be non-negative.")
+
+    sensitive_str = np.array([str(s) for s in sensitive_features])
+    groups = np.unique(sensitive_str)
+    s_name = sensitive_name if sensitive_name is not None else "the excluded characteristic"
+
+    # --- Edge case: single group ---
+    if len(groups) == 1:
+        # With only one group, conditional mean independence holds trivially
+        empty_result = BinSufficiencyResult(
+            bin_index=0,
+            f_statistic=float("nan"),
+            p_value=float("nan"),
+            group_means={groups[0]: float(np.average(y, weights=w)) if w.sum() > 0 else float("nan")},
+            group_exposures={groups[0]: float(w.sum())},
+            testable=False,
+        )
+        return ProxySufficiencyReport(
+            sufficient=True,
+            overall_p_value=1.0,
+            overall_statistic=0.0,
+            bin_results=[empty_result],
+            interpretation=(
+                f"The test is trivially satisfied: only one group was present in "
+                f"sensitive_features, so conditional mean independence holds by definition."
+            ),
+            alpha=alpha,
+            n_bins=n_bins,
+            n_testable_bins=0,
+            failing_bins=[],
+        )
+
+    # --- Assign quantile bins (exposure-weighted) ---
+    bin_ids = _assign_bins_sufficiency(predictions, w, n_bins)
+
+    # --- Per-bin F-tests ---
+    bin_results: list[BinSufficiencyResult] = []
+    fisher_log_p_sum = 0.0
+    n_testable = 0
+    failing_bins: list[int] = []
+
+    unique_bins = np.unique(bin_ids)
+
+    for b in range(n_bins):
+        mask_bin = bin_ids == b
+        if not mask_bin.any():
+            # Empty bin — create a placeholder but mark untestable
+            bin_results.append(BinSufficiencyResult(
+                bin_index=b,
+                f_statistic=float("nan"),
+                p_value=float("nan"),
+                group_means={},
+                group_exposures={},
+                testable=False,
+            ))
+            continue
+
+        # Compute exposure-weighted mean per group within this bin
+        group_means: dict[str, float] = {}
+        group_exposures: dict[str, float] = {}
+        group_obs: dict[str, np.ndarray] = {}
+        group_weights: dict[str, np.ndarray] = {}
+
+        for g in groups:
+            mask_cell = mask_bin & (sensitive_str == g)
+            if not mask_cell.any():
+                continue
+            w_g = w[mask_cell]
+            y_g = y[mask_cell]
+            total_exp = float(w_g.sum())
+            if total_exp <= 0:
+                continue
+            mu_g = float(np.dot(y_g, w_g) / total_exp)
+            group_means[g] = mu_g
+            group_exposures[g] = total_exp
+            group_obs[g] = y_g
+            group_weights[g] = w_g
+
+        non_empty_groups = list(group_means.keys())
+        n_groups_bin = len(non_empty_groups)
+
+        if n_groups_bin < 2:
+            bin_results.append(BinSufficiencyResult(
+                bin_index=b,
+                f_statistic=float("nan"),
+                p_value=float("nan"),
+                group_means=group_means,
+                group_exposures=group_exposures,
+                testable=False,
+            ))
+            continue
+
+        # Exposure-weighted grand mean in this bin
+        total_bin_exp = sum(group_exposures[g] for g in non_empty_groups)
+        grand_mean = sum(
+            group_means[g] * group_exposures[g] for g in non_empty_groups
+        ) / total_bin_exp
+
+        # Weighted SS_between (between-group sum of squares)
+        ss_between = sum(
+            group_exposures[g] * (group_means[g] - grand_mean) ** 2
+            for g in non_empty_groups
+        )
+        df_between = n_groups_bin - 1
+
+        # Weighted SS_within (within-group sum of squares)
+        # For each observation i in group g: w_i * (y_i - mu_g)^2
+        ss_within = 0.0
+        df_within_total = 0
+        for g in non_empty_groups:
+            y_g = group_obs[g]
+            w_g = group_weights[g]
+            mu_g = group_means[g]
+            ss_within += float(np.dot(w_g, (y_g - mu_g) ** 2))
+            # Effective df contribution: n_obs_g - 1 (standard ANOVA approach)
+            df_within_total += len(y_g) - 1
+
+        if ss_within <= 0 or df_within_total <= 0:
+            # Degenerate: within-group variance is zero (e.g., all Y identical)
+            # If ss_between > 0 and ss_within == 0, the F-stat would be infinite
+            # but this typically indicates a data problem. We set p=0 in this case.
+            if ss_between > 1e-12:
+                f_stat = float("inf")
+                p_val = 0.0
+            else:
+                # Both between and within are zero: perfectly uniform, CMI holds
+                f_stat = 0.0
+                p_val = 1.0
+            testable = True
+        else:
+            ms_between = ss_between / df_between
+            ms_within = ss_within / df_within_total
+            if ms_within <= 0:
+                f_stat = float("inf") if ms_between > 0 else 0.0
+                p_val = 0.0 if ms_between > 0 else 1.0
+            else:
+                f_stat = ms_between / ms_within
+                p_val = float(stats.f.sf(f_stat, dfn=df_between, dfd=df_within_total))
+            testable = True
+
+        bin_results.append(BinSufficiencyResult(
+            bin_index=b,
+            f_statistic=float(f_stat) if not np.isinf(f_stat) else float("inf"),
+            p_value=p_val,
+            group_means=group_means,
+            group_exposures=group_exposures,
+            testable=testable,
+        ))
+
+        if testable:
+            n_testable += 1
+            # Fisher's method: accumulate -2 * log(p)
+            # Clamp p to [1e-300, 1.0] to avoid log(0)
+            p_clamped = max(p_val, 1e-300)
+            fisher_log_p_sum += -2.0 * np.log(p_clamped)
+            if p_val < alpha:
+                failing_bins.append(b)
+
+    # --- Fisher's combined test ---
+    if n_testable == 0:
+        overall_stat = 0.0
+        overall_pvalue = 1.0
+    else:
+        overall_stat = float(fisher_log_p_sum)
+        # Fisher statistic ~ chi-squared with 2 * n_testable df
+        overall_pvalue = float(stats.chi2.sf(overall_stat, df=2 * n_testable))
+
+    sufficient = overall_pvalue >= alpha
+
+    # --- Build interpretation ---
+    if sufficient:
+        interpretation = (
+            f"The model captures the risk variation associated with {s_name}: "
+            f"no statistically significant differences in expected claims between "
+            f"groups were detected across prediction bins "
+            f"(Fisher p={overall_pvalue:.3f}, alpha={alpha})."
+        )
+    else:
+        failing_str = ", ".join(str(b) for b in failing_bins)
+        interpretation = (
+            f"The model does not fully capture the risk variation associated with "
+            f"{s_name}: bins [{failing_str}] show statistically significant "
+            f"differences in expected claims between groups, indicating residual "
+            f"proxy discrimination "
+            f"(Fisher p={overall_pvalue:.4f}, alpha={alpha})."
+        )
+
+    return ProxySufficiencyReport(
+        sufficient=sufficient,
+        overall_p_value=overall_pvalue,
+        overall_statistic=overall_stat,
+        bin_results=bin_results,
+        interpretation=interpretation,
+        alpha=alpha,
+        n_bins=n_bins,
+        n_testable_bins=n_testable,
+        failing_bins=failing_bins,
+    )
+
+
+def _assign_bins_sufficiency(
+    predictions: np.ndarray,
+    w: np.ndarray,
+    n_bins: int,
+) -> np.ndarray:
+    """
+    Assign observations to quantile bins by exposure-weighted cumulative fraction.
+
+    Returns integer array of bin indices in [0, n_bins).
+    """
+    n = len(predictions)
+    if n == 0:
+        return np.array([], dtype=int)
+
+    order = np.argsort(predictions, kind="stable")
+    sorted_w = w[order]
+
+    cumw = np.cumsum(sorted_w)
+    total_w = cumw[-1]
+    if total_w <= 0:
+        return np.zeros(n, dtype=int)
+
+    frac = cumw / total_w
+    bin_boundaries = np.linspace(0.0, 1.0, n_bins + 1)
+    bin_ids_sorted = np.searchsorted(bin_boundaries[1:], frac, side="left")
+    bin_ids_sorted = np.clip(bin_ids_sorted, 0, n_bins - 1)
+
+    bin_ids = np.empty(n, dtype=int)
+    bin_ids[order] = bin_ids_sorted
+    return bin_ids

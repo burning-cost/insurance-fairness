@@ -944,3 +944,303 @@ class TestIsotonicMulticalibrationCorrectorCorrection:
         out = iso.transform(y_pred_new, prot_new)
         assert out.shape == y_pred_new.shape
         assert np.all(np.isfinite(out))
+
+
+# ---------------------------------------------------------------------------
+# Test: proxy_sufficiency_test (Gap 7 — Proposition 6.5)
+# ---------------------------------------------------------------------------
+
+
+def make_cmi_satisfied_data(
+    n: int = 3000,
+    n_bins: int = 10,
+    seed: int = 42,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Data where E[Y | pi(X), S=s] = E[Y | pi(X)] for all s.
+
+    Predictions capture all risk. Group membership S has no residual
+    effect on Y given predictions.
+    """
+    rng = np.random.default_rng(seed)
+    n_half = n // 2
+    sensitive = np.array(["0"] * n_half + ["1"] * (n - n_half))
+    exposure = rng.uniform(0.5, 2.0, size=n)
+    predictions = rng.gamma(2.0, 50.0, size=n)
+    # Y ~ Poisson(predictions * exposure) / exposure
+    # E[Y | predictions, S=s] = predictions = E[Y | predictions]
+    y = rng.poisson(predictions * exposure) / exposure
+    return y, predictions, sensitive, exposure
+
+
+def make_cmi_violated_data(
+    n: int = 4000,
+    group_effect: float = 0.5,
+    seed: int = 42,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Data where E[Y | pi(X), S=1] != E[Y | pi(X), S=0].
+
+    Group S=1 has systematically higher actual claims than predicted,
+    conditional on any prediction level. This simulates a model that
+    fails to capture gender-related risk through its allowed proxies.
+    """
+    rng = np.random.default_rng(seed)
+    n_half = n // 2
+    sensitive = np.array(["0"] * n_half + ["1"] * (n - n_half))
+    exposure = rng.uniform(0.5, 2.0, size=n)
+    predictions = rng.gamma(2.0, 50.0, size=n)
+    # Group 0: well-calibrated
+    y = rng.poisson(predictions * exposure) / exposure
+    # Group 1: actual claims = predictions * (1 + group_effect), unconditionally
+    mask_1 = sensitive == "1"
+    y[mask_1] = rng.poisson(predictions[mask_1] * exposure[mask_1] * (1.0 + group_effect)) / exposure[mask_1]
+    return y, predictions, sensitive, exposure
+
+
+class TestProxySufficiencyTest:
+    """Tests for proxy_sufficiency_test() (Proposition 6.5, Denuit et al. 2026)."""
+
+    def test_import_from_package(self):
+        """proxy_sufficiency_test and ProxySufficiencyReport must be importable."""
+        from insurance_fairness import proxy_sufficiency_test, ProxySufficiencyReport
+        assert callable(proxy_sufficiency_test)
+        assert ProxySufficiencyReport is not None
+
+    def test_in_all(self):
+        """Both symbols must be in __all__."""
+        import insurance_fairness
+        assert "proxy_sufficiency_test" in insurance_fairness.__all__
+        assert "ProxySufficiencyReport" in insurance_fairness.__all__
+        assert "BinSufficiencyResult" in insurance_fairness.__all__
+
+    # --- CMI satisfied: model should pass ---
+
+    def test_cmi_satisfied_sufficient_true(self):
+        """
+        When predictions fully capture risk (CMI holds), the test should
+        not reject at alpha=0.05 on a large enough sample.
+        """
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, exp = make_cmi_satisfied_data(n=5000, seed=101)
+        report = proxy_sufficiency_test(y, preds, sens, exposure=exp, n_bins=10, alpha=0.05)
+        assert report.sufficient is True, (
+            f"CMI-satisfied data should pass: overall_p={report.overall_p_value:.4f}"
+        )
+
+    def test_cmi_satisfied_high_pvalue(self):
+        """CMI-satisfied data should yield a high overall p-value."""
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, exp = make_cmi_satisfied_data(n=5000, seed=202)
+        report = proxy_sufficiency_test(y, preds, sens, exposure=exp, n_bins=10, alpha=0.05)
+        assert report.overall_p_value > 0.05
+
+    # --- CMI violated: model should fail ---
+
+    def test_cmi_violated_sufficient_false(self):
+        """
+        When E[Y|pi,S=1] != E[Y|pi,S=0], the test should reject on a
+        sufficiently large and strongly biased sample.
+        """
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, exp = make_cmi_violated_data(n=5000, group_effect=0.5, seed=303)
+        report = proxy_sufficiency_test(y, preds, sens, exposure=exp, n_bins=10, alpha=0.05)
+        assert report.sufficient is False, (
+            f"CMI-violated data should fail: overall_p={report.overall_p_value:.4f}"
+        )
+
+    def test_cmi_violated_low_pvalue(self):
+        """CMI-violated data should produce a low overall p-value."""
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, exp = make_cmi_violated_data(n=5000, group_effect=0.5, seed=404)
+        report = proxy_sufficiency_test(y, preds, sens, exposure=exp, n_bins=10, alpha=0.05)
+        assert report.overall_p_value < 0.05
+
+    def test_cmi_violated_failing_bins_nonempty(self):
+        """CMI-violated data should identify at least one failing bin."""
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, exp = make_cmi_violated_data(n=5000, group_effect=0.5, seed=505)
+        report = proxy_sufficiency_test(y, preds, sens, exposure=exp, n_bins=10, alpha=0.05)
+        assert len(report.failing_bins) > 0
+
+    # --- Report structure ---
+
+    def test_report_fields_present(self):
+        """ProxySufficiencyReport must have all documented fields."""
+        from insurance_fairness import proxy_sufficiency_test, ProxySufficiencyReport
+        y, preds, sens, exp = make_cmi_satisfied_data(n=1000)
+        report = proxy_sufficiency_test(y, preds, sens, exposure=exp, n_bins=5)
+        assert isinstance(report, ProxySufficiencyReport)
+        assert hasattr(report, "sufficient")
+        assert hasattr(report, "overall_p_value")
+        assert hasattr(report, "overall_statistic")
+        assert hasattr(report, "bin_results")
+        assert hasattr(report, "interpretation")
+        assert hasattr(report, "alpha")
+        assert hasattr(report, "n_bins")
+        assert hasattr(report, "n_testable_bins")
+        assert hasattr(report, "failing_bins")
+
+    def test_bin_results_length(self):
+        """bin_results should have n_bins entries."""
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, exp = make_cmi_satisfied_data(n=1000, seed=7)
+        n_bins = 7
+        report = proxy_sufficiency_test(y, preds, sens, exposure=exp, n_bins=n_bins)
+        assert len(report.bin_results) == n_bins
+
+    def test_bin_results_have_group_means(self):
+        """Each BinSufficiencyResult should contain group means."""
+        from insurance_fairness import proxy_sufficiency_test, BinSufficiencyResult
+        y, preds, sens, exp = make_cmi_satisfied_data(n=1000, seed=8)
+        report = proxy_sufficiency_test(y, preds, sens, exposure=exp, n_bins=5)
+        for br in report.bin_results:
+            assert isinstance(br, BinSufficiencyResult)
+            if br.testable:
+                assert len(br.group_means) >= 2
+                for g, mu in br.group_means.items():
+                    assert isinstance(g, str)
+                    assert np.isfinite(mu)
+
+    def test_interpretation_is_string(self):
+        """interpretation must be a non-empty string."""
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, exp = make_cmi_satisfied_data(n=1000)
+        report = proxy_sufficiency_test(y, preds, sens, exposure=exp)
+        assert isinstance(report.interpretation, str)
+        assert len(report.interpretation) > 0
+
+    def test_interpretation_mentions_failing_bins_when_violated(self):
+        """Interpretation for a failing model should mention specific bin indices."""
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, exp = make_cmi_violated_data(n=5000, group_effect=0.5, seed=606)
+        report = proxy_sufficiency_test(y, preds, sens, exposure=exp, n_bins=10, alpha=0.05)
+        if not report.sufficient:
+            for b in report.failing_bins:
+                assert str(b) in report.interpretation, (
+                    f"Bin {b} should appear in interpretation: {report.interpretation}"
+                )
+
+    def test_sensitive_name_in_interpretation(self):
+        """sensitive_name should appear in the interpretation string."""
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, exp = make_cmi_satisfied_data(n=1000)
+        report = proxy_sufficiency_test(
+            y, preds, sens, exposure=exp, sensitive_name="gender"
+        )
+        assert "gender" in report.interpretation
+
+    # --- Exposure weighting ---
+
+    def test_exposure_weighting_changes_results(self):
+        """
+        Results with exposure weighting should differ from equal-weight results
+        when exposure is not uniform.
+        """
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, exp = make_cmi_satisfied_data(n=1000, seed=9)
+        # Non-uniform exposure: group 1 gets 5x exposure
+        exp_skewed = exp.copy()
+        exp_skewed[sens == "1"] *= 5.0
+
+        report_uniform = proxy_sufficiency_test(y, preds, sens, n_bins=5)
+        report_skewed = proxy_sufficiency_test(y, preds, sens, exposure=exp_skewed, n_bins=5)
+
+        # Statistics should differ
+        assert abs(report_uniform.overall_statistic - report_skewed.overall_statistic) > 1e-6
+
+    def test_no_exposure_runs_without_error(self):
+        """exposure=None should run correctly, defaulting to equal weights."""
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, _ = make_cmi_satisfied_data(n=500)
+        report = proxy_sufficiency_test(y, preds, sens, exposure=None, n_bins=5)
+        assert report.n_testable_bins > 0
+
+    # --- Edge cases ---
+
+    def test_single_bin(self):
+        """n_bins=1 should run without error."""
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, exp = make_cmi_satisfied_data(n=500)
+        report = proxy_sufficiency_test(y, preds, sens, exposure=exp, n_bins=1)
+        assert len(report.bin_results) == 1
+        assert report.n_testable_bins <= 1
+
+    def test_single_group_is_trivially_sufficient(self):
+        """With a single group, CMI holds trivially."""
+        from insurance_fairness import proxy_sufficiency_test
+        rng = np.random.default_rng(10)
+        n = 500
+        y = rng.uniform(0, 1, n)
+        preds = rng.uniform(0, 1, n)
+        sens = np.array(["A"] * n)
+        report = proxy_sufficiency_test(y, preds, sens, n_bins=5)
+        assert report.sufficient is True
+        assert report.overall_p_value == 1.0
+        assert report.n_testable_bins == 0
+
+    def test_n_testable_bins_le_n_bins(self):
+        """n_testable_bins must not exceed n_bins."""
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, exp = make_cmi_satisfied_data(n=500, seed=11)
+        report = proxy_sufficiency_test(y, preds, sens, exposure=exp, n_bins=8)
+        assert report.n_testable_bins <= report.n_bins
+
+    def test_overall_p_value_in_unit_interval(self):
+        """overall_p_value must be in [0, 1]."""
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, exp = make_cmi_violated_data(n=2000, group_effect=0.3, seed=12)
+        report = proxy_sufficiency_test(y, preds, sens, exposure=exp, n_bins=5)
+        assert 0.0 <= report.overall_p_value <= 1.0
+
+    def test_overall_statistic_nonnegative(self):
+        """Fisher statistic is always >= 0."""
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, exp = make_cmi_satisfied_data(n=500)
+        report = proxy_sufficiency_test(y, preds, sens, exposure=exp, n_bins=5)
+        assert report.overall_statistic >= 0.0
+
+    def test_invalid_n_bins_raises(self):
+        """n_bins=0 should raise ValueError."""
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, exp = make_cmi_satisfied_data(n=100)
+        with pytest.raises(ValueError, match="n_bins"):
+            proxy_sufficiency_test(y, preds, sens, n_bins=0)
+
+    def test_invalid_alpha_raises(self):
+        """alpha outside (0, 1) should raise ValueError."""
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, exp = make_cmi_satisfied_data(n=100)
+        with pytest.raises(ValueError, match="alpha"):
+            proxy_sufficiency_test(y, preds, sens, alpha=1.5)
+
+    def test_mismatched_lengths_raises(self):
+        """Mismatched y/predictions lengths should raise ValueError."""
+        from insurance_fairness import proxy_sufficiency_test
+        with pytest.raises(ValueError):
+            proxy_sufficiency_test(
+                np.array([1.0, 2.0]),
+                np.array([1.0]),
+                np.array(["A", "B"]),
+            )
+
+    def test_bin_results_p_values_valid(self):
+        """All testable bin p-values must be in [0, 1]."""
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, exp = make_cmi_violated_data(n=2000, group_effect=0.4, seed=13)
+        report = proxy_sufficiency_test(y, preds, sens, exposure=exp, n_bins=8)
+        for br in report.bin_results:
+            if br.testable and not np.isnan(br.p_value):
+                assert 0.0 <= br.p_value <= 1.0, f"bin {br.bin_index} p={br.p_value}"
+
+    def test_failing_bins_consistent_with_alpha(self):
+        """failing_bins should contain exactly the bins with p < alpha."""
+        from insurance_fairness import proxy_sufficiency_test
+        y, preds, sens, exp = make_cmi_violated_data(n=3000, group_effect=0.4, seed=14)
+        alpha = 0.05
+        report = proxy_sufficiency_test(y, preds, sens, exposure=exp, n_bins=8, alpha=alpha)
+        expected_failing = [
+            br.bin_index for br in report.bin_results
+            if br.testable and not np.isnan(br.p_value) and br.p_value < alpha
+        ]
+        assert set(report.failing_bins) == set(expected_failing)

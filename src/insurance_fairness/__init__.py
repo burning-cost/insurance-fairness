@@ -162,6 +162,26 @@ model exploits proxies for the protected attribute. No causal graph required::
     print(f"Proxy vulnerability: {result.proxy_vulnerability:.2f}")
     print(result.segment_report)
 
+v0.7.0 adds :func:`proxy_sufficiency_test` — a formal test for the conditional
+mean independence condition from Proposition 6.5 of Denuit, Michaelides & Trufin
+(2026). This checks whether an excluded characteristic S (e.g., gender post-Test-Achats)
+satisfies E[Y|pi(X), S=s] = E[Y|pi(X)] — the necessary and sufficient condition
+for multicalibration to be achievable without S::
+
+    from insurance_fairness import proxy_sufficiency_test
+
+    report = proxy_sufficiency_test(
+        y=claims,
+        predictions=model_premiums,
+        sensitive_features=gender_codes,
+        exposure=years_exposed,
+        n_bins=10,
+        alpha=0.05,
+        sensitive_name="gender",
+    )
+    print(report.sufficient)        # True if CMI holds
+    print(report.interpretation)   # plain-English verdict
+
 Quick start::
 
     import polars as pl
@@ -227,7 +247,7 @@ from insurance_fairness.discrimination_insensitive import (
 from insurance_fairness.double_fairness import DoubleFairnessAudit, DoubleFairnessResult
 from insurance_fairness.indirect import IndirectDiscriminationAudit, IndirectDiscriminationResult
 from insurance_fairness.marginal_fairness import MarginalFairnessPremium, MarginalFairnessReport
-from insurance_fairness.multicalibration import IsotonicMulticalibrationCorrector, IterativeMulticalibrationCorrector, MulticalibrationAudit, MulticalibrationReport
+from insurance_fairness.multicalibration import BinSufficiencyResult, IsotonicMulticalibrationCorrector, IterativeMulticalibrationCorrector, MulticalibrationAudit, MulticalibrationReport, ProxySufficiencyReport, proxy_sufficiency_test
 from insurance_fairness.privatized_audit import PrivatizedFairnessAudit, PrivatizedAuditResult
 from insurance_fairness.proxy_detection import (
     detect_proxies,
@@ -282,10 +302,13 @@ __all__ = [
     "MarginalFairnessPremium",
     "MarginalFairnessReport",
     # Multicalibration
+    "BinSufficiencyResult",
     "IsotonicMulticalibrationCorrector",
     "IterativeMulticalibrationCorrector",
     "MulticalibrationAudit",
     "MulticalibrationReport",
+    "ProxySufficiencyReport",
+    "proxy_sufficiency_test",
     # Privatized audit (LDP)
     "PrivatizedFairnessAudit",
     "PrivatizedAuditResult",
