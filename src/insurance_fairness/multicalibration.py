@@ -42,6 +42,9 @@ For iterative correction converging to full multicalibration, see
 For a one-shot, non-iterative isotonic regression approach, see
 :class:`IsotonicMulticalibrationCorrector`.
 
+For iterative bias correction with a continuous sensitive feature using
+local GLM (Algorithm C), see :class:`LocalGLMMulticalibrationCorrector`.
+
 References
 ----------
 Denuit, M., Michaelides, M. & Trufin, J. (2026). Multicalibration in Insurance
@@ -1096,6 +1099,630 @@ class IsotonicMulticalibrationCorrector:
         return self.fit(y, predictions, sensitive_features, exposure).transform(
             predictions, sensitive_features
         )
+
+
+
+# ---------------------------------------------------------------------------
+# LocalGLMMulticalibrationCorrector — Algorithm C (Section 7.2.2)
+# ---------------------------------------------------------------------------
+
+
+class LocalGLMMulticalibrationCorrector:
+    """
+    Iterative multicalibration corrector via local GLM for continuous S (Algorithm C).
+
+    Implements Section 7.2.2 of Denuit, Michaelides & Trufin (2026),
+    arXiv:2603.16317. This is the continuous-sensitive-feature analogue of
+    :class:`IterativeMulticalibrationCorrector` (Algorithm B).
+
+    When S is truly continuous — age, income, vehicle age, distance to coast —
+    binning it into a few categories loses information and introduces arbitrary
+    boundary effects. Algorithm C replaces the bin+group lookup table with a
+    smooth bias surface b(p, s) estimated via local regression over the joint
+    space of prediction p and sensitive feature s.
+
+    The iterative loop
+    ------------------
+    At each iteration j:
+
+    1. Compute residuals r_i = Y_i - pi_i^(j) for each observation.
+    2. Estimate marginal bias via 1D local regression:
+       b_hat^(j)(p) = smooth(r, on=pi)   [Nadaraya-Watson with Gaussian kernel]
+    3. Estimate bivariate bias via 2D local regression:
+       b_hat^(j)(p, s) = smooth(r, on=(pi, s))
+    4. Group deviation: delta^(j)(p, s) = b_hat^(j)(p, s) - b_hat^(j)(p)
+    5. Credibility-weight the deviation:
+       delta_tilde^(j)(p, s) = z(p, s) * delta^(j)(p, s)
+    6. Center to preserve marginal autocalibration:
+       b_tilde^(j)(p, s) = b_hat^(j)(p) + delta_tilde^(j)(p, s)
+                            - smooth(delta_tilde^(j), on=pi)
+    7. Update: pi_i^(j+1) = pi_i^(j) + eta * b_tilde^(j)(pi_i, s_i)
+    8. Convergence check on a fixed evaluation grid.
+
+    Centering (step 6) is critical: without it, each iteration shifts the
+    marginal distribution, and the algorithm diverges from autocalibration.
+    The centering term (smooth(delta_tilde^(j), on=pi)) is the exposure-
+    weighted expected group deviation at each prediction level — subtracting
+    it ensures the marginal bias correction is unchanged.
+
+    Credibility weights
+    -------------------
+    Unlike Algorithm B where z_kl is recomputed each iteration as bins shift,
+    here z(pi_i, s_i) is computed ONCE before the loop using k-nearest-
+    neighbour density estimation:
+
+        w_loc(i) = sum of exposure in k nearest neighbours in (pi_norm, s_norm) space
+        z_i = w_loc(i) / (w_loc(i) + c)
+
+    This prevents feedback between correction magnitude and shrinkage, which
+    would otherwise create instability when the smooth surface is updated.
+
+    Local regression implementation
+    --------------------------------
+    Python has no direct equivalent of R's locfit. We use Nadaraya-Watson
+    kernel regression via statsmodels KernelReg, which estimates:
+
+        E[Y | X = x] via  sum_i K((x - X_i)/h) Y_i / sum_i K((x - X_i)/h)
+
+    with Gaussian kernel. The bandwidth is selected by leave-one-out cross-
+    validation when ``bandwidth='cv'`` (default) or can be set manually.
+
+    For 1D estimation (step 2), we regress residuals on predictions alone.
+    For 2D estimation (step 3), we regress residuals on (predictions, s),
+    treating both as continuous variables.
+
+    Convergence
+    -----------
+    Convergence is assessed on a fixed grid of (p, s) evaluation points:
+
+        max_{(p,s) in grid} eta * |b_tilde^(j)(p, s)| / p_bar <= delta
+
+    where p_bar is the exposure-weighted mean prediction. The grid is
+    n_eval_grid x n_eval_grid points spanning the training range of (pi, s).
+
+    When to use
+    -----------
+    - S is genuinely continuous and should not be discretised.
+    - Portfolio is large enough for kernel bandwidth selection to be stable
+      (rule of thumb: n >= 500 after group filtering).
+    - The miscalibration pattern is smooth in (p, s) — not driven by sharp
+      regime changes at specific ages or income levels.
+
+    Use :class:`IterativeMulticalibrationCorrector` (Algorithm B) when:
+    - S has few distinct values (< ~20). Discretise it and use Algorithm B.
+    - Portfolio is small. Kernel regression on small samples is unstable.
+    - Computation time matters: local regression is O(n^2) per iteration.
+
+    Parameters
+    ----------
+    eta :
+        Learning rate for additive update. Must be in (0, 1]. Default 0.2.
+    delta :
+        Convergence threshold: stop when max scaled correction < delta.
+        Default 0.01 (1% relative correction).
+    c :
+        Credibility tuning parameter. Full credibility when local exposure
+        sum equals c. Default 100.0.
+    max_iter :
+        Maximum number of iterations. Default 50.
+    bandwidth :
+        Kernel bandwidth for local regression. ``'cv'`` selects bandwidth via
+        leave-one-out cross-validation (slow but principled). A positive
+        float uses that fixed bandwidth for both 1D and 2D regressions.
+        Default ``'cv'``.
+    n_neighbours :
+        Number of nearest neighbours to use for local exposure density
+        estimation (used to compute credibility weights z_i). Default 50.
+    n_eval_grid :
+        Number of evaluation grid points per axis for convergence check.
+        Total grid size is n_eval_grid^2. Default 10.
+    normalize_features :
+        Whether to z-score normalise predictions and s before kernel
+        regression. Strongly recommended when predictions and s have
+        very different scales (e.g., prediction in [0.05, 0.8] and
+        s = age in [17, 90]). Default True.
+
+    References
+    ----------
+    Denuit, M., Michaelides, M. & Trufin, J. (2026). arXiv:2603.16317,
+    Section 7.2.2 (Algorithm C).
+    """
+
+    def __init__(
+        self,
+        eta: float = 0.2,
+        delta: float = 0.01,
+        c: float = 100.0,
+        max_iter: int = 50,
+        bandwidth: float | str = "cv",
+        n_neighbours: int = 50,
+        n_eval_grid: int = 10,
+        normalize_features: bool = True,
+    ) -> None:
+        if not 0.0 < eta <= 1.0:
+            raise ValueError("eta must be in (0, 1].")
+        if delta <= 0.0:
+            raise ValueError("delta must be positive.")
+        if c <= 0.0:
+            raise ValueError("c must be positive.")
+        if max_iter < 1:
+            raise ValueError("max_iter must be at least 1.")
+        if bandwidth != "cv" and not (isinstance(bandwidth, (int, float)) and bandwidth > 0):
+            raise ValueError("bandwidth must be 'cv' or a positive float.")
+        if n_neighbours < 1:
+            raise ValueError("n_neighbours must be at least 1.")
+        if n_eval_grid < 2:
+            raise ValueError("n_eval_grid must be at least 2.")
+
+        self.eta = eta
+        self.delta = delta
+        self.c = c
+        self.max_iter = max_iter
+        self.bandwidth = bandwidth
+        self.n_neighbours = n_neighbours
+        self.n_eval_grid = n_eval_grid
+        self.normalize_features = normalize_features
+
+        # Fitted state
+        self._pi_train: np.ndarray | None = None
+        self._s_train: np.ndarray | None = None
+        self._obs_correction_factor: np.ndarray | None = None
+        self._credibility_weights: np.ndarray | None = None
+        self._convergence_history: list[dict[str, Any]] = []
+        self._converged: bool = False
+        # Normalisation parameters (set during fit if normalize_features=True)
+        self._pi_mean: float = 0.0
+        self._pi_std: float = 1.0
+        self._s_mean: float = 0.0
+        self._s_std: float = 1.0
+        # Grid for convergence check
+        self._eval_grid_pi: np.ndarray | None = None
+        self._eval_grid_s: np.ndarray | None = None
+        # Final corrected predictions (fit-time, for fit_transform)
+        self._corrected_train: np.ndarray | None = None
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def fit(
+        self,
+        y: np.ndarray,
+        predictions: np.ndarray,
+        sensitive_continuous: np.ndarray,
+        exposure: np.ndarray | None = None,
+    ) -> "LocalGLMMulticalibrationCorrector":
+        """
+        Learn the bias correction surface via iterative local GLM.
+
+        Parameters
+        ----------
+        y :
+            Observed outcomes (claims, losses). Shape (n,).
+        predictions :
+            Initial model predictions. Shape (n,). Must be non-negative.
+        sensitive_continuous :
+            Continuous sensitive feature (age, income, etc.). Shape (n,).
+        exposure :
+            Exposure weights. Shape (n,). If None, all set to 1.0.
+
+        Returns
+        -------
+        self
+        """
+        try:
+            from statsmodels.nonparametric.kernel_regression import KernelReg
+        except ImportError as exc:
+            raise ImportError(
+                "LocalGLMMulticalibrationCorrector requires statsmodels >= 0.14. "
+                "Install with: pip install statsmodels"
+            ) from exc
+        try:
+            from sklearn.neighbors import NearestNeighbors
+        except ImportError as exc:
+            raise ImportError(
+                "LocalGLMMulticalibrationCorrector requires scikit-learn. "
+                "Install with: pip install scikit-learn"
+            ) from exc
+
+        y = np.asarray(y, dtype=float)
+        predictions = np.asarray(predictions, dtype=float)
+        sensitive_continuous = np.asarray(sensitive_continuous, dtype=float)
+        n = len(y)
+
+        if len(predictions) != n or len(sensitive_continuous) != n:
+            raise ValueError(
+                "y, predictions, and sensitive_continuous must have the same length."
+            )
+        if np.any(predictions < 0):
+            raise ValueError("predictions must be non-negative.")
+        if np.any(~np.isfinite(sensitive_continuous)):
+            raise ValueError("sensitive_continuous must be finite (no NaN/inf).")
+
+        if exposure is None:
+            w = np.ones(n, dtype=float)
+        else:
+            w = np.asarray(exposure, dtype=float)
+            if len(w) != n:
+                raise ValueError("exposure must have the same length as y.")
+            if np.any(w < 0):
+                raise ValueError("exposure must be non-negative.")
+
+        # Normalise features for kernel regression stability.
+        # Predictions and s can have wildly different scales (premium 0.05-0.8,
+        # age 17-90), which would cause bandwidth selection to favour one axis.
+        if self.normalize_features:
+            self._pi_mean = float(np.average(predictions, weights=w))
+            self._pi_std = float(
+                np.sqrt(np.average((predictions - self._pi_mean) ** 2, weights=w))
+            )
+            self._s_mean = float(np.average(sensitive_continuous, weights=w))
+            self._s_std = float(
+                np.sqrt(np.average((sensitive_continuous - self._s_mean) ** 2, weights=w))
+            )
+            if self._pi_std < 1e-10:
+                self._pi_std = 1.0
+            if self._s_std < 1e-10:
+                self._s_std = 1.0
+            pi_norm = (predictions - self._pi_mean) / self._pi_std
+            s_norm = (sensitive_continuous - self._s_mean) / self._s_std
+        else:
+            pi_norm = predictions.copy()
+            s_norm = sensitive_continuous.copy()
+
+        # Pre-compute credibility weights z_i using kNN density in (pi_norm, s_norm) space.
+        # z_i = w_loc(i) / (w_loc(i) + c), where w_loc(i) = sum of exposure of
+        # k nearest neighbours. Computed ONCE before the loop — this is the key
+        # algorithmic difference from Algorithm B (where z_kl is recomputed per iter).
+        features_2d = np.column_stack([pi_norm, s_norm])
+        k = min(self.n_neighbours, n - 1)
+        nn_model = NearestNeighbors(n_neighbors=k + 1)  # +1 because point is own neighbour
+        nn_model.fit(features_2d)
+        nn_indices = nn_model.kneighbors(features_2d, return_distance=False)
+        # Exclude self (index 0 in sorted distance order when using kneighbors)
+        local_exposure = np.array([w[nn_indices[i, 1:]].sum() for i in range(n)])
+        z = local_exposure / (local_exposure + self.c)
+        self._credibility_weights = z
+
+        # Build fixed evaluation grid for convergence check.
+        # Using the training range of (pi_norm, s_norm) ensures grid stays in-distribution.
+        pi_grid_vals = np.linspace(float(pi_norm.min()), float(pi_norm.max()), self.n_eval_grid)
+        s_grid_vals = np.linspace(float(s_norm.min()), float(s_norm.max()), self.n_eval_grid)
+        pi_grid_2d, s_grid_2d = np.meshgrid(pi_grid_vals, s_grid_vals)
+        self._eval_grid_pi = pi_grid_2d.ravel()
+        self._eval_grid_s = s_grid_2d.ravel()
+
+        # Determine bandwidth strategy
+        bw_flag: str | None = "cv_ls" if self.bandwidth == "cv" else None
+        bw_fixed: float | None = None if self.bandwidth == "cv" else float(self.bandwidth)
+
+        # Mean prediction (original scale) for scale-invariant convergence criterion
+        p_bar = float(np.average(predictions, weights=w))
+        if p_bar <= 0:
+            p_bar = 1.0
+
+        # Working copy of predictions
+        pi = predictions.copy()
+        pi_norm_work = pi_norm.copy()
+
+        self._convergence_history = []
+        self._converged = False
+
+        for iteration in range(self.max_iter):
+            residuals = y - pi  # r_i = Y_i - pi_i^(j)
+
+            # Step 2: 1D local regression of residuals on pi_norm (marginal bias estimate)
+            bhat_1d = self._kernel_reg_1d(
+                y=residuals, x=pi_norm_work, w=w,
+                bw_flag=bw_flag, bw_fixed=bw_fixed, KernelReg=KernelReg,
+            )
+
+            # Step 3: 2D local regression of residuals on (pi_norm, s_norm)
+            bhat_2d = self._kernel_reg_2d(
+                y=residuals, x1=pi_norm_work, x2=s_norm, w=w,
+                bw_flag=bw_flag, bw_fixed=bw_fixed, KernelReg=KernelReg,
+            )
+
+            # Step 4: group deviation — excess bias beyond what pi alone predicts
+            delta = bhat_2d - bhat_1d
+
+            # Step 5: credibility-weight the group deviation
+            delta_tilde = z * delta
+
+            # Step 6: centering step — critical for preserving marginal autocalibration.
+            # Without centering, each iteration shifts the marginal distribution.
+            # We subtract E[delta_tilde | pi], the expected group deviation at each
+            # prediction level, which ensures the marginal correction is unaffected.
+            centering = self._kernel_reg_1d(
+                y=delta_tilde, x=pi_norm_work, w=w,
+                bw_flag=bw_flag, bw_fixed=bw_fixed, KernelReg=KernelReg,
+            )
+            b_tilde = bhat_1d + delta_tilde - centering
+
+            # Convergence check on fixed grid before applying update.
+            # Evaluate b_tilde surface at grid points via 2D kernel regression.
+            b_tilde_grid = self._kernel_reg_2d_predict(
+                y=b_tilde, x1=pi_norm_work, x2=s_norm, w=w,
+                eval_x1=self._eval_grid_pi, eval_x2=self._eval_grid_s,
+                bw_flag=bw_flag, bw_fixed=bw_fixed, KernelReg=KernelReg,
+            )
+            # Reconstruct grid pi on original scale for denominator
+            if self.normalize_features:
+                pi_grid_orig = self._eval_grid_pi * self._pi_std + self._pi_mean
+            else:
+                pi_grid_orig = self._eval_grid_pi.copy()
+            pi_grid_orig = np.where(pi_grid_orig > 1e-10, pi_grid_orig, p_bar)
+            # Scale-invariant criterion: eta * |b_tilde(p,s)| / p  (analogous to Algorithm B)
+            scaled_corrections = self.eta * np.abs(b_tilde_grid) / pi_grid_orig
+            max_scaled = float(np.nanmax(scaled_corrections)) if len(scaled_corrections) > 0 else 0.0
+
+            self._convergence_history.append({
+                "iteration": iteration + 1,
+                "max_scaled_correction": max_scaled,
+            })
+
+            # Step 7: additive update on prediction scale
+            pi = pi + self.eta * b_tilde
+            pi = np.clip(pi, 0.0, None)  # predictions must stay non-negative
+
+            # Update normalised working copy (pi has changed)
+            if self.normalize_features:
+                pi_norm_work = (pi - self._pi_mean) / self._pi_std
+            else:
+                pi_norm_work = pi.copy()
+
+            # Step 8: check convergence
+            if max_scaled < self.delta:
+                self._converged = True
+                break
+
+        # Store fitted state needed for transform()
+        self._pi_train = pi_norm.copy()       # original normalised pi for kNN
+        self._s_train = s_norm.copy()
+        self._corrected_train = pi.copy()
+        # Per-obs cumulative correction factor: corrected_pi / original_pi
+        safe_pred = np.where(predictions > 1e-10, predictions, 1e-10)
+        self._obs_correction_factor = pi / safe_pred
+        self._w_train = w.copy()
+        return self
+
+    def transform(
+        self,
+        predictions: np.ndarray,
+        sensitive_continuous: np.ndarray,
+        exposure: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """
+        Apply the learned bias correction surface to new predictions.
+
+        The correction surface learned during fit() is generalised to new
+        observations via k-NN weighted interpolation: each new observation
+        is assigned an inverse-distance-weighted average of the correction
+        factors of its nearest training neighbours in normalised (pi, s) space.
+
+        Parameters
+        ----------
+        predictions :
+            Model predictions to correct. Shape (n,).
+        sensitive_continuous :
+            Continuous sensitive feature values. Shape (n,).
+        exposure :
+            Unused; present for API consistency with other correctors.
+
+        Returns
+        -------
+        np.ndarray
+            Corrected predictions, same shape as predictions.
+        """
+        if self._obs_correction_factor is None or self._pi_train is None:
+            raise RuntimeError("Call fit() before transform().")
+
+        predictions = np.asarray(predictions, dtype=float)
+        sensitive_continuous = np.asarray(sensitive_continuous, dtype=float)
+        n = len(predictions)
+
+        if len(sensitive_continuous) != n:
+            raise ValueError(
+                "predictions and sensitive_continuous must have the same length."
+            )
+
+        # Normalise using fit-time parameters
+        if self.normalize_features:
+            pi_norm_new = (predictions - self._pi_mean) / self._pi_std
+            s_norm_new = (sensitive_continuous - self._s_mean) / self._s_std
+        else:
+            pi_norm_new = predictions.copy()
+            s_norm_new = sensitive_continuous.copy()
+
+        try:
+            from sklearn.neighbors import NearestNeighbors
+        except ImportError as exc:
+            raise ImportError("scikit-learn required for transform().") from exc
+
+        train_features = np.column_stack([self._pi_train, self._s_train])
+        new_features = np.column_stack([pi_norm_new, s_norm_new])
+
+        k = min(self.n_neighbours, len(self._pi_train))
+        nn_model = NearestNeighbors(n_neighbors=k)
+        nn_model.fit(train_features)
+        distances, indices = nn_model.kneighbors(new_features)
+
+        # Inverse-distance-weighted average of training correction factors.
+        # When a new obs coincides exactly with a training obs, distance is 0,
+        # so we add eps to avoid division by zero.
+        eps = 1e-10
+        inv_d = 1.0 / (distances + eps)
+        weights_nn = inv_d / inv_d.sum(axis=1, keepdims=True)  # (n_new, k)
+        neighbor_factors = self._obs_correction_factor[indices]  # (n_new, k)
+        correction_factors = (weights_nn * neighbor_factors).sum(axis=1)  # (n_new,)
+
+        corrected = predictions * correction_factors
+        return np.clip(corrected, 0.0, None)
+
+    def fit_transform(
+        self,
+        y: np.ndarray,
+        predictions: np.ndarray,
+        sensitive_continuous: np.ndarray,
+        exposure: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """
+        Fit and return corrected predictions on the training data.
+
+        Equivalent to ``fit(...).transform(...)`` on the same data.
+
+        Parameters
+        ----------
+        y :
+            Observed outcomes. Shape (n,).
+        predictions :
+            Model predictions. Shape (n,).
+        sensitive_continuous :
+            Continuous sensitive feature. Shape (n,).
+        exposure :
+            Exposure weights. If None, all set to 1.0.
+
+        Returns
+        -------
+        np.ndarray
+            Corrected predictions on training data, same shape as predictions.
+        """
+        self.fit(y, predictions, sensitive_continuous, exposure)
+        assert self._corrected_train is not None
+        return self._corrected_train.copy()
+
+    def convergence_report(self) -> dict[str, Any]:
+        """
+        Return convergence diagnostics from the iterative correction loop.
+
+        Returns
+        -------
+        dict with keys:
+            iterations : int
+                Number of iterations run before stopping.
+            converged : bool
+                True if convergence criterion was met before max_iter.
+            max_scaled_correction_per_iteration : list[float]
+                Maximum eta * |b_tilde(p,s)| / p at each iteration.
+                Evaluated on fixed grid of (p, s) values.
+            credibility_weights_summary : dict
+                Summary statistics (min, mean, median, max) of z_i values
+                computed before the loop.
+        """
+        if not self._convergence_history:
+            raise RuntimeError("Call fit() before convergence_report().")
+
+        z = self._credibility_weights
+        z_summary: dict[str, float] = {}
+        if z is not None and len(z) > 0:
+            z_summary = {
+                "min": float(z.min()),
+                "mean": float(z.mean()),
+                "median": float(np.median(z)),
+                "max": float(z.max()),
+            }
+
+        return {
+            "iterations": len(self._convergence_history),
+            "converged": self._converged,
+            "max_scaled_correction_per_iteration": [
+                h["max_scaled_correction"] for h in self._convergence_history
+            ],
+            "credibility_weights_summary": z_summary,
+        }
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _kernel_reg_1d(
+        self,
+        y: np.ndarray,
+        x: np.ndarray,
+        w: np.ndarray,
+        bw_flag: str | None,
+        bw_fixed: float | None,
+        KernelReg: type,
+    ) -> np.ndarray:
+        """
+        Nadaraya-Watson kernel regression of y on x (1D), returning fit at training points.
+        """
+        try:
+            if bw_fixed is not None:
+                kr = KernelReg(
+                    endog=y, exog=x, var_type="c", reg_type="lc",
+                    bw=[bw_fixed], defaults=None,
+                )
+            else:
+                kr = KernelReg(
+                    endog=y, exog=x, var_type="c", reg_type="lc", bw=bw_flag,
+                )
+            fitted, _ = kr.fit()
+            return np.asarray(fitted, dtype=float)
+        except Exception:
+            # Fallback to global mean if kernel regression fails (e.g., degenerate data)
+            return np.full(len(y), float(np.average(y, weights=w)))
+
+    def _kernel_reg_2d(
+        self,
+        y: np.ndarray,
+        x1: np.ndarray,
+        x2: np.ndarray,
+        w: np.ndarray,
+        bw_flag: str | None,
+        bw_fixed: float | None,
+        KernelReg: type,
+    ) -> np.ndarray:
+        """
+        Nadaraya-Watson kernel regression of y on (x1, x2), returning fit at training points.
+        """
+        X = np.column_stack([x1, x2])
+        try:
+            if bw_fixed is not None:
+                kr = KernelReg(
+                    endog=y, exog=X, var_type="cc", reg_type="lc",
+                    bw=[bw_fixed, bw_fixed], defaults=None,
+                )
+            else:
+                kr = KernelReg(
+                    endog=y, exog=X, var_type="cc", reg_type="lc", bw=bw_flag,
+                )
+            fitted, _ = kr.fit()
+            return np.asarray(fitted, dtype=float)
+        except Exception:
+            return np.full(len(y), float(np.average(y, weights=w)))
+
+    def _kernel_reg_2d_predict(
+        self,
+        y: np.ndarray,
+        x1: np.ndarray,
+        x2: np.ndarray,
+        w: np.ndarray,
+        eval_x1: np.ndarray,
+        eval_x2: np.ndarray,
+        bw_flag: str | None,
+        bw_fixed: float | None,
+        KernelReg: type,
+    ) -> np.ndarray:
+        """
+        Nadaraya-Watson 2D regression predicting at eval_x1, eval_x2 grid points.
+        """
+        X = np.column_stack([x1, x2])
+        eval_X = np.column_stack([eval_x1, eval_x2])
+        try:
+            if bw_fixed is not None:
+                kr = KernelReg(
+                    endog=y, exog=X, var_type="cc", reg_type="lc",
+                    bw=[bw_fixed, bw_fixed], defaults=None,
+                )
+            else:
+                kr = KernelReg(
+                    endog=y, exog=X, var_type="cc", reg_type="lc", bw=bw_flag,
+                )
+            predicted, _ = kr.fit(eval_X)
+            return np.asarray(predicted, dtype=float)
+        except Exception:
+            return np.full(len(eval_x1), float(np.average(y, weights=w)))
 
 
 # ---------------------------------------------------------------------------

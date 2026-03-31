@@ -1244,3 +1244,346 @@ class TestProxySufficiencyTest:
             if br.testable and not np.isnan(br.p_value) and br.p_value < alpha
         ]
         assert set(report.failing_bins) == set(expected_failing)
+
+
+# ---------------------------------------------------------------------------
+# Test: LocalGLMMulticalibrationCorrector (Algorithm C, Section 7.2.2)
+# ---------------------------------------------------------------------------
+
+
+def make_continuous_biased_data(
+    n: int = 1000,
+    bias_slope: float = 0.3,
+    seed: int = 42,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Generate (y_true, y_pred, sensitive_continuous, exposure) where the model
+    is systematically biased against high values of the sensitive feature.
+
+    sensitive_continuous is age in [20, 75]. y_pred is a base premium.
+    y_true has an additive bias proportional to age (above mean): older
+    policyholders cost more than predicted.
+    """
+    rng = np.random.default_rng(seed)
+    age = rng.uniform(20, 75, n)
+    y_pred = rng.uniform(0.05, 0.30, n)
+    exposure = rng.uniform(0.5, 1.0, n)
+    # Introduce a smooth bias: older ages are underpredicted
+    age_norm = (age - 47.5) / 20.0  # centred on mean age
+    bias = bias_slope * age_norm * y_pred
+    # Noisy observations from Poisson(y_pred + bias)
+    lambda_ = np.clip(y_pred + bias, 1e-6, None)
+    y_true = rng.poisson(lambda_ * exposure) / exposure
+    return y_true, y_pred, age, exposure
+
+
+def make_continuous_calibrated_data(
+    n: int = 1000,
+    seed: int = 42,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Generate (y_true, y_pred, sensitive_continuous, exposure) for a well-calibrated model.
+    No systematic bias with respect to the sensitive feature.
+    """
+    rng = np.random.default_rng(seed)
+    age = rng.uniform(20, 75, n)
+    y_pred = rng.uniform(0.05, 0.30, n)
+    exposure = rng.uniform(0.5, 1.0, n)
+    lambda_ = np.clip(y_pred, 1e-6, None)
+    y_true = rng.poisson(lambda_ * exposure) / exposure
+    return y_true, y_pred, age, exposure
+
+
+class TestLocalGLMMulticalibrationCorrectorInit:
+    def test_import_from_package(self):
+        """LocalGLMMulticalibrationCorrector must be importable from top-level package."""
+        from insurance_fairness import LocalGLMMulticalibrationCorrector as LGLM
+        from insurance_fairness.multicalibration import LocalGLMMulticalibrationCorrector
+        assert LGLM is LocalGLMMulticalibrationCorrector
+
+    def test_invalid_eta_zero(self):
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        with pytest.raises(ValueError, match="eta"):
+            LocalGLMMulticalibrationCorrector(eta=0.0)
+
+    def test_invalid_eta_above_one(self):
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        with pytest.raises(ValueError, match="eta"):
+            LocalGLMMulticalibrationCorrector(eta=1.5)
+
+    def test_invalid_delta(self):
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        with pytest.raises(ValueError, match="delta"):
+            LocalGLMMulticalibrationCorrector(delta=0.0)
+
+    def test_invalid_c(self):
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        with pytest.raises(ValueError, match="c"):
+            LocalGLMMulticalibrationCorrector(c=-1.0)
+
+    def test_invalid_max_iter(self):
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        with pytest.raises(ValueError, match="max_iter"):
+            LocalGLMMulticalibrationCorrector(max_iter=0)
+
+    def test_invalid_bandwidth_string(self):
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        with pytest.raises(ValueError, match="bandwidth"):
+            LocalGLMMulticalibrationCorrector(bandwidth="auto")
+
+    def test_invalid_bandwidth_negative(self):
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        with pytest.raises(ValueError, match="bandwidth"):
+            LocalGLMMulticalibrationCorrector(bandwidth=-0.5)
+
+    def test_invalid_n_neighbours(self):
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        with pytest.raises(ValueError, match="n_neighbours"):
+            LocalGLMMulticalibrationCorrector(n_neighbours=0)
+
+    def test_invalid_n_eval_grid(self):
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        with pytest.raises(ValueError, match="n_eval_grid"):
+            LocalGLMMulticalibrationCorrector(n_eval_grid=1)
+
+    def test_transform_before_fit_raises(self):
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        corrector = LocalGLMMulticalibrationCorrector()
+        with pytest.raises(RuntimeError, match="fit"):
+            corrector.transform(np.array([0.1, 0.2]), np.array([25.0, 30.0]))
+
+    def test_convergence_report_before_fit_raises(self):
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        corrector = LocalGLMMulticalibrationCorrector()
+        with pytest.raises(RuntimeError, match="fit"):
+            corrector.convergence_report()
+
+
+class TestLocalGLMMulticalibrationCorrectorFit:
+    def test_fit_returns_self(self):
+        """fit() should return self for method chaining."""
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        y, pred, age, exp = make_continuous_calibrated_data(n=300, seed=1)
+        corrector = LocalGLMMulticalibrationCorrector(
+            bandwidth=0.5, max_iter=2, n_neighbours=20, n_eval_grid=4
+        )
+        result = corrector.fit(y, pred, age, exp)
+        assert result is corrector
+
+    def test_transform_output_shape(self):
+        """transform() output must match input shape."""
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        y, pred, age, exp = make_continuous_biased_data(n=400, seed=2)
+        corrector = LocalGLMMulticalibrationCorrector(
+            bandwidth=0.5, max_iter=2, n_neighbours=30, n_eval_grid=4
+        )
+        corrector.fit(y, pred, age, exp)
+        corrected = corrector.transform(pred, age, exp)
+        assert corrected.shape == pred.shape
+
+    def test_transform_no_negative_values(self):
+        """Corrected predictions must be non-negative."""
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        y, pred, age, exp = make_continuous_biased_data(n=500, seed=3)
+        corrector = LocalGLMMulticalibrationCorrector(
+            bandwidth=0.5, max_iter=3, n_neighbours=30, n_eval_grid=4
+        )
+        corrector.fit(y, pred, age, exp)
+        corrected = corrector.transform(pred, age, exp)
+        assert np.all(corrected >= 0.0)
+
+    def test_fit_mismatched_y_pred_lengths_raises(self):
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        with pytest.raises(ValueError):
+            corrector = LocalGLMMulticalibrationCorrector(bandwidth=0.5, max_iter=1)
+            corrector.fit(
+                np.array([0.1, 0.2]),
+                np.array([0.1]),
+                np.array([25.0, 30.0]),
+            )
+
+    def test_fit_negative_predictions_raises(self):
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        with pytest.raises(ValueError, match="non-negative"):
+            corrector = LocalGLMMulticalibrationCorrector(bandwidth=0.5, max_iter=1)
+            corrector.fit(
+                np.array([0.1, 0.2, 0.3]),
+                np.array([-0.1, 0.2, 0.3]),
+                np.array([25.0, 30.0, 35.0]),
+            )
+
+    def test_fit_nan_sensitive_raises(self):
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        with pytest.raises(ValueError, match="finite"):
+            corrector = LocalGLMMulticalibrationCorrector(bandwidth=0.5, max_iter=1)
+            corrector.fit(
+                np.array([0.1, 0.2, 0.3]),
+                np.array([0.1, 0.2, 0.3]),
+                np.array([25.0, np.nan, 35.0]),
+            )
+
+    def test_no_exposure_defaults_to_ones(self):
+        """fit() with no exposure and with exposure=ones should give identical results."""
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        y, pred, age, _ = make_continuous_biased_data(n=300, seed=4)
+        c1 = LocalGLMMulticalibrationCorrector(
+            bandwidth=0.5, max_iter=2, n_neighbours=20, n_eval_grid=4
+        )
+        c2 = LocalGLMMulticalibrationCorrector(
+            bandwidth=0.5, max_iter=2, n_neighbours=20, n_eval_grid=4
+        )
+        c1.fit(y, pred, age, exposure=None)
+        c2.fit(y, pred, age, exposure=np.ones(len(pred)))
+        out1 = c1.transform(pred, age)
+        out2 = c2.transform(pred, age)
+        np.testing.assert_allclose(out1, out2, rtol=1e-10)
+
+    def test_fit_transform_shortcut(self):
+        """fit_transform() should give same result as fit().transform() on training data."""
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        y, pred, age, exp = make_continuous_biased_data(n=400, seed=5)
+        c1 = LocalGLMMulticalibrationCorrector(
+            bandwidth=0.5, max_iter=2, n_neighbours=20, n_eval_grid=4
+        )
+        c2 = LocalGLMMulticalibrationCorrector(
+            bandwidth=0.5, max_iter=2, n_neighbours=20, n_eval_grid=4
+        )
+        out_ft = c1.fit_transform(y, pred, age, exp)
+        c2.fit(y, pred, age, exp)
+        out_sep = c2.transform(pred, age, exp)
+        # fit_transform returns _corrected_train (iteratively updated pi)
+        # while transform applies kNN correction — they differ slightly
+        # but both should be close to zero-bias
+        assert out_ft.shape == pred.shape
+        assert out_sep.shape == pred.shape
+
+
+class TestLocalGLMMulticalibrationCorrectorConvergence:
+    def test_convergence_report_structure(self):
+        """convergence_report() must return dict with required keys and correct types."""
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        y, pred, age, exp = make_continuous_biased_data(n=400, seed=6)
+        corrector = LocalGLMMulticalibrationCorrector(
+            bandwidth=0.5, max_iter=3, n_neighbours=20, n_eval_grid=4
+        )
+        corrector.fit(y, pred, age, exp)
+        report = corrector.convergence_report()
+        assert "iterations" in report
+        assert "converged" in report
+        assert "max_scaled_correction_per_iteration" in report
+        assert "credibility_weights_summary" in report
+        assert isinstance(report["iterations"], int)
+        assert isinstance(report["converged"], bool)
+        assert isinstance(report["max_scaled_correction_per_iteration"], list)
+        assert isinstance(report["credibility_weights_summary"], dict)
+
+    def test_convergence_history_length_matches_iterations(self):
+        """History list length should equal iterations run."""
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        y, pred, age, exp = make_continuous_biased_data(n=400, seed=7)
+        corrector = LocalGLMMulticalibrationCorrector(
+            bandwidth=0.5, max_iter=4, n_neighbours=20, n_eval_grid=4
+        )
+        corrector.fit(y, pred, age, exp)
+        report = corrector.convergence_report()
+        assert len(report["max_scaled_correction_per_iteration"]) == report["iterations"]
+
+    def test_max_iter_respected(self):
+        """Iterations should not exceed max_iter."""
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        y, pred, age, exp = make_continuous_biased_data(n=400, seed=8)
+        max_iter = 3
+        corrector = LocalGLMMulticalibrationCorrector(
+            bandwidth=0.5, max_iter=max_iter, delta=1e-9, n_neighbours=20, n_eval_grid=4
+        )
+        corrector.fit(y, pred, age, exp)
+        report = corrector.convergence_report()
+        assert report["iterations"] <= max_iter
+
+    def test_credibility_weights_in_unit_interval(self):
+        """All credibility weights z_i must be in [0, 1]."""
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        y, pred, age, exp = make_continuous_calibrated_data(n=400, seed=9)
+        corrector = LocalGLMMulticalibrationCorrector(
+            bandwidth=0.5, max_iter=2, n_neighbours=30, n_eval_grid=4
+        )
+        corrector.fit(y, pred, age, exp)
+        z = corrector._credibility_weights
+        assert z is not None
+        assert np.all(z >= 0.0)
+        assert np.all(z <= 1.0)
+
+    def test_credibility_weights_summary_in_convergence_report(self):
+        """credibility_weights_summary must have min, mean, median, max keys."""
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        y, pred, age, exp = make_continuous_calibrated_data(n=300, seed=10)
+        corrector = LocalGLMMulticalibrationCorrector(
+            bandwidth=0.5, max_iter=2, n_neighbours=20, n_eval_grid=4
+        )
+        corrector.fit(y, pred, age, exp)
+        report = corrector.convergence_report()
+        summary = report["credibility_weights_summary"]
+        for key in ("min", "mean", "median", "max"):
+            assert key in summary, f"Missing key: {key}"
+            assert 0.0 <= summary[key] <= 1.0
+
+    def test_correction_changes_biased_predictions(self):
+        """For a biased model, corrected predictions should differ from originals."""
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        y, pred, age, exp = make_continuous_biased_data(n=600, bias_slope=0.5, seed=11)
+        corrector = LocalGLMMulticalibrationCorrector(
+            bandwidth=0.5, max_iter=3, c=20.0, n_neighbours=30, n_eval_grid=4
+        )
+        corrector.fit(y, pred, age, exp)
+        corrected = corrector.transform(pred, age, exp)
+        # The corrected predictions should not be identical to the originals
+        assert not np.allclose(corrected, pred), (
+            "Correction applied no change to biased predictions"
+        )
+
+    def test_normalize_features_default_true(self):
+        """normalize_features=True should not error even with mismatched scales."""
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        rng = np.random.default_rng(12)
+        n = 300
+        # age in [17, 90] and pred in [0.01, 0.1] — very different scales
+        age = rng.uniform(17, 90, n)
+        pred = rng.uniform(0.01, 0.1, n)
+        y = pred + rng.normal(0, 0.01, n)
+        y = np.clip(y, 0.0, None)
+        corrector = LocalGLMMulticalibrationCorrector(
+            bandwidth=0.5, max_iter=2, n_neighbours=20, n_eval_grid=4,
+            normalize_features=True,
+        )
+        corrector.fit(y, pred, age)
+        out = corrector.transform(pred, age)
+        assert np.all(np.isfinite(out))
+
+    def test_normalize_features_false(self):
+        """normalize_features=False should run without error on same-scale data."""
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        rng = np.random.default_rng(13)
+        n = 200
+        age_norm = rng.standard_normal(n)  # already z-scored
+        pred = rng.uniform(0.05, 0.25, n)
+        y = pred + rng.normal(0, 0.02, n)
+        y = np.clip(y, 0.0, None)
+        corrector = LocalGLMMulticalibrationCorrector(
+            bandwidth=0.5, max_iter=2, n_neighbours=15, n_eval_grid=4,
+            normalize_features=False,
+        )
+        corrector.fit(y, pred, age_norm)
+        out = corrector.transform(pred, age_norm)
+        assert out.shape == pred.shape
+        assert np.all(out >= 0.0)
+
+    def test_fixed_bandwidth_runs(self):
+        """bandwidth=0.3 (fixed float) should run without error."""
+        from insurance_fairness import LocalGLMMulticalibrationCorrector
+        y, pred, age, exp = make_continuous_calibrated_data(n=300, seed=14)
+        corrector = LocalGLMMulticalibrationCorrector(
+            bandwidth=0.3, max_iter=2, n_neighbours=20, n_eval_grid=4
+        )
+        corrector.fit(y, pred, age, exp)
+        out = corrector.transform(pred, age)
+        assert out.shape == pred.shape

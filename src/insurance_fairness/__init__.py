@@ -247,7 +247,7 @@ from insurance_fairness.discrimination_insensitive import (
 from insurance_fairness.double_fairness import DoubleFairnessAudit, DoubleFairnessResult
 from insurance_fairness.indirect import IndirectDiscriminationAudit, IndirectDiscriminationResult
 from insurance_fairness.marginal_fairness import MarginalFairnessPremium, MarginalFairnessReport
-from insurance_fairness.multicalibration import BinSufficiencyResult, IsotonicMulticalibrationCorrector, IterativeMulticalibrationCorrector, MulticalibrationAudit, MulticalibrationReport, ProxySufficiencyReport, proxy_sufficiency_test
+from insurance_fairness.multicalibration import BinSufficiencyResult, IsotonicMulticalibrationCorrector, IterativeMulticalibrationCorrector, LocalGLMMulticalibrationCorrector, MulticalibrationAudit, MulticalibrationReport, ProxySufficiencyReport, proxy_sufficiency_test
 from insurance_fairness.privatized_audit import PrivatizedFairnessAudit, PrivatizedAuditResult
 from insurance_fairness.proxy_detection import (
     detect_proxies,
@@ -305,6 +305,7 @@ __all__ = [
     "BinSufficiencyResult",
     "IsotonicMulticalibrationCorrector",
     "IterativeMulticalibrationCorrector",
+    "LocalGLMMulticalibrationCorrector",
     "MulticalibrationAudit",
     "MulticalibrationReport",
     "ProxySufficiencyReport",
