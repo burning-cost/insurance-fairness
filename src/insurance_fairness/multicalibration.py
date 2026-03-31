@@ -39,6 +39,9 @@ downstream users can inspect it.
 For iterative correction converging to full multicalibration, see
 :class:`IterativeMulticalibrationCorrector`.
 
+For a one-shot, non-iterative isotonic regression approach, see
+:class:`IsotonicMulticalibrationCorrector`.
+
 References
 ----------
 Denuit, M., Michaelides, M. & Trufin, J. (2026). Multicalibration in Insurance
@@ -53,6 +56,7 @@ from typing import Any
 import numpy as np
 import polars as pl
 from scipy import stats
+from sklearn.isotonic import IsotonicRegression
 
 
 # ---------------------------------------------------------------------------
@@ -481,7 +485,7 @@ class IterativeMulticalibrationCorrector:
     Iterative multicalibration corrector following Denuit et al. (2026).
 
     Applies repeated additive corrections on the response scale until the
-    maximum relative bias across all (bin, group) cells drops below a
+    maximum scaled correction across all (bin, group) cells drops below a
     convergence threshold. This is the iterative version of the one-shot
     credibility correction in MulticalibrationAudit.correct().
 
@@ -492,7 +496,23 @@ class IterativeMulticalibrationCorrector:
         3. Credibility blend: b_tilde_kl = z_kl * b_hat_kl + (1 - z_kl) * b_hat_k
            where z_kl = min(n_kl / c, 1.0)
         4. Additive update: pi^(j+1) = pi^(j) + eta * (b_tilde_kl - 1) * pi^(j)
-        5. Stop if max |b_hat_kl - 1| < delta
+        5. Stop if max_{k,l} eta * |b_tilde_kl - 1| < delta  (Section 7.1.2)
+
+    Stopping criterion (Section 7.1.2)
+    ------------------------------------
+    The paper's stopping criterion is scale-invariant:
+
+        max_{k,l} |eta * b_tilde_kl| / pi_bar_kl <= delta
+
+    where pi_bar_kl is the exposure-weighted mean prediction in cell (k,l).
+    Since the correction applied to pi is eta * (b_tilde_kl - 1) * pi, dividing
+    by pi_bar_kl gives eta * |b_tilde_kl - 1|. This normalisation means the
+    threshold is in relative terms regardless of the premium level in each cell.
+
+    The practical effect: the criterion uses the BLENDED factor b_tilde_kl
+    (not the raw A/E ratio b_hat_kl) and applies the learning rate eta, making
+    small corrections cheap even in high-premium cells where absolute deviations
+    are large.
 
     The "additive on response scale" phrasing from the paper means we update
     the predicted premium value, not a log-scale correction. The update
@@ -511,8 +531,8 @@ class IterativeMulticalibrationCorrector:
         Learning rate for the additive update step. Must be in (0, 1].
         Smaller values are more conservative. Default 0.2.
     delta :
-        Convergence threshold: stop when max |b_hat_kl - 1| < delta across
-        all non-empty cells. Default 0.01 (1% relative bias).
+        Convergence threshold: stop when max eta * |b_tilde_kl - 1| < delta
+        across all non-empty cells. Default 0.01 (1% scaled correction).
     c :
         Credibility threshold: full credibility at c exposure units.
         z_kl = min(n_kl / c, 1.0). Default 100.0.
@@ -639,7 +659,12 @@ class IterativeMulticalibrationCorrector:
 
             # Compute cell-level A/E ratios and apply credibility blending
             cell_factors: dict[tuple[int, str], float] = {}
-            max_rel_bias = 0.0
+            # Stopping metric: max_{k,l} eta * |b_tilde_kl - 1| (Section 7.1.2).
+            # This is the scale-invariant criterion from the paper: the correction
+            # applied to pi is eta * (b_tilde_kl - 1) * pi; dividing by pi_bar_kl
+            # gives eta * |b_tilde_kl - 1|, which is dimensionless and independent
+            # of the premium level in each cell.
+            max_scaled_correction = 0.0
             iter_cell_biases: dict[str, float] = {}
 
             for b in range(self.n_bins):
@@ -668,15 +693,20 @@ class IterativeMulticalibrationCorrector:
                     b_tilde_kl = z_kl * b_hat_kl + (1.0 - z_kl) * b_hat_k
                     cell_factors[(b, g)] = b_tilde_kl
 
-                    # Track relative bias for convergence check (large cells only)
+                    # Track convergence metric (large cells only).
+                    # Paper Section 7.1.2: criterion is eta * |b_tilde_kl - 1|.
+                    # Using b_tilde_kl (blended) not b_hat_kl (raw AE) ensures
+                    # the stopping criterion is consistent with what we actually
+                    # apply as a correction — partially-shrunk cells converge
+                    # faster than fully-credible cells with the same raw bias.
                     if n_obs >= self.min_bin_size:
-                        rel_bias = abs(b_hat_kl - 1.0)
-                        max_rel_bias = max(max_rel_bias, rel_bias)
-                        iter_cell_biases[f"bin{b}_group{g}"] = float(b_hat_kl - 1.0)
+                        scaled_correction = self.eta * abs(b_tilde_kl - 1.0)
+                        max_scaled_correction = max(max_scaled_correction, scaled_correction)
+                        iter_cell_biases[f"bin{b}_group{g}"] = float(b_tilde_kl - 1.0)
 
             self._convergence_history.append({
                 "iteration": iteration + 1,
-                "max_relative_bias": float(max_rel_bias),
+                "max_relative_bias": float(max_scaled_correction),
             })
 
             # Apply additive update: pi += eta * (b_tilde_kl - 1) * pi
@@ -692,8 +722,8 @@ class IterativeMulticalibrationCorrector:
                     pi[mask_cell] *= step_factor
                     cumulative_factor[(b, g)] *= step_factor
 
-            # Check convergence
-            if max_rel_bias < self.delta:
+            # Check convergence using the paper's scale-invariant criterion
+            if max_scaled_correction < self.delta:
                 converged = True
                 # Store final cell biases for convergence_report()
                 self._final_cell_biases = dict(iter_cell_biases)
@@ -767,9 +797,10 @@ class IterativeMulticalibrationCorrector:
             converged : bool
                 True if convergence criterion was met before max_iter.
             max_relative_bias_per_iteration : list[float]
-                Maximum |b_hat_kl - 1| across credible cells at each iteration.
+                Maximum eta * |b_tilde_kl - 1| across credible cells at each
+                iteration (the paper's scale-invariant stopping criterion).
             final_cell_biases : dict[str, float]
-                Relative bias (b_hat_kl - 1) for each (bin, group) cell at
+                Blended bias (b_tilde_kl - 1) for each (bin, group) cell at
                 the final iteration. Keys formatted as "binK_groupG".
         """
         if not self._convergence_history:
@@ -835,3 +866,233 @@ class IterativeMulticalibrationCorrector:
         bin_ids = np.searchsorted(self._bin_edges[1:], y_pred, side="left")
         bin_ids = np.clip(bin_ids, 0, self.n_bins - 1)
         return bin_ids
+
+
+# ---------------------------------------------------------------------------
+# IsotonicMulticalibrationCorrector
+# ---------------------------------------------------------------------------
+
+
+class IsotonicMulticalibrationCorrector:
+    """
+    One-shot isotonic multicalibration corrector (Algorithm A, Section 7.1.1).
+
+    Implements the non-iterative groupwise isotonic regression approach from
+    Denuit, Michaelides & Trufin (2026), arXiv:2603.16317.
+
+    For each group l, the corrected premium is:
+
+        pi_mbc(X) = m_hat_l(pi(X))
+
+    where m_hat_l is an isotonic regression of Y on pi(X), fitted on the
+    observations in group l weighted by exposure.
+
+    Theoretical guarantee (Proposition 6.2): achieves
+
+        E[Y | pi_mbc(X) = p, S = l] = p   for all p and categorical S = l
+
+    i.e., full multicalibration within each group simultaneously.
+
+    When to use vs. IterativeMulticalibrationCorrector
+    ---------------------------------------------------
+    Use IsotonicMulticalibrationCorrector when:
+    - Group sizes are large and roughly even (all groups >= ~5% of portfolio).
+    - You need a one-shot solution with no hyperparameter tuning (no eta, delta).
+    - The miscalibration pattern within a group is non-monotonic — isotonic
+      regression is more flexible than a single multiplicative correction.
+    - You want the theoretical guarantee from Proposition 6.2 directly.
+
+    Use IterativeMulticalibrationCorrector when:
+    - One or more groups are small (< ~5% of portfolio). The isotonic fit for
+      a small group will be noisy and may overfit.
+    - You want to control the size of each correction step (eta parameter).
+    - The correction surface is expected to be smooth across prediction levels.
+
+    Note on out-of-range predictions at transform() time
+    -----------------------------------------------------
+    Isotonic regression is defined on the training range [min(pi), max(pi)]
+    for each group. Predictions outside this range are clipped to the nearest
+    training boundary before lookup. This is the standard interpolation
+    convention and avoids extrapolating a monotone step function outside its
+    support.
+
+    Parameters
+    ----------
+    increasing :
+        Direction of monotonicity constraint for isotonic regression.
+        'auto' lets sklearn determine the direction from the data;
+        True forces increasing (higher predictions -> higher corrections);
+        False forces decreasing. Default 'auto'.
+    out_of_bounds :
+        How sklearn's IsotonicRegression handles predictions outside the
+        training range. 'clip' (default) clips to the nearest boundary;
+        'nan' returns NaN (not recommended for production use).
+
+    References
+    ----------
+    Denuit, M., Michaelides, M. & Trufin, J. (2026). Multicalibration in
+    Insurance Pricing. arXiv:2603.16317, Section 7.1.1 and Proposition 6.2.
+    """
+
+    def __init__(
+        self,
+        increasing: bool | str = "auto",
+        out_of_bounds: str = "clip",
+    ) -> None:
+        self.increasing = increasing
+        self.out_of_bounds = out_of_bounds
+
+        # Fitted state: one IsotonicRegression per group
+        self._group_models: dict[str, IsotonicRegression] | None = None
+        self._groups_seen: list[str] | None = None
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def fit(
+        self,
+        y: np.ndarray,
+        predictions: np.ndarray,
+        sensitive_features: np.ndarray,
+        exposure: np.ndarray | None = None,
+    ) -> "IsotonicMulticalibrationCorrector":
+        """
+        Fit an isotonic regression of Y on predictions within each group.
+
+        Parameters
+        ----------
+        y :
+            Observed outcomes (claims, losses). Shape (n,).
+        predictions :
+            Model predictions (pure premiums, expected losses). Shape (n,).
+            Must be non-negative.
+        sensitive_features :
+            Group labels. Shape (n,). Any hashable type.
+        exposure :
+            Exposure weights. Shape (n,). If None, defaults to 1.0 for all.
+            Passed as ``sample_weight`` to IsotonicRegression.
+
+        Returns
+        -------
+        self
+        """
+        y = np.asarray(y, dtype=float)
+        predictions = np.asarray(predictions, dtype=float)
+        sensitive_features = np.asarray(sensitive_features)
+        n = len(y)
+
+        if len(predictions) != n or len(sensitive_features) != n:
+            raise ValueError(
+                "y, predictions, and sensitive_features must have the same length."
+            )
+        if np.any(predictions < 0):
+            raise ValueError("predictions must be non-negative.")
+
+        if exposure is None:
+            w = np.ones(n, dtype=float)
+        else:
+            w = np.asarray(exposure, dtype=float)
+            if len(w) != n:
+                raise ValueError("exposure must have the same length as y.")
+            if np.any(w < 0):
+                raise ValueError("exposure must be non-negative.")
+
+        sensitive_str = np.array([str(x) for x in sensitive_features])
+        groups = np.unique(sensitive_str)
+
+        self._group_models = {}
+        for g in groups:
+            mask = sensitive_str == g
+            pi_g = predictions[mask]
+            y_g = y[mask]
+            w_g = w[mask]
+
+            if len(pi_g) == 0:
+                continue
+
+            iso = IsotonicRegression(
+                increasing=self.increasing,
+                out_of_bounds=self.out_of_bounds,
+            )
+            iso.fit(pi_g, y_g, sample_weight=w_g)
+            self._group_models[g] = iso
+
+        self._groups_seen = list(groups)
+        return self
+
+    def transform(
+        self,
+        predictions: np.ndarray,
+        sensitive_features: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Apply group-wise isotonic correction to predictions.
+
+        Each observation is corrected using the isotonic regression fitted
+        for its group. Observations in groups not seen during fit() are
+        passed through unchanged (no correction applied).
+
+        Out-of-range predictions are handled according to the ``out_of_bounds``
+        parameter set at construction (default: clip to training range).
+
+        Parameters
+        ----------
+        predictions :
+            Model predictions to correct. Shape (n,).
+        sensitive_features :
+            Group labels. Shape (n,).
+
+        Returns
+        -------
+        np.ndarray
+            Corrected predictions, same shape as predictions.
+        """
+        if self._group_models is None or self._groups_seen is None:
+            raise RuntimeError("Call fit() before transform().")
+
+        predictions = np.asarray(predictions, dtype=float)
+        sensitive_str = np.array([str(x) for x in sensitive_features])
+        corrected = predictions.copy()
+
+        for g, iso in self._group_models.items():
+            mask = sensitive_str == g
+            if not mask.any():
+                continue
+            corrected[mask] = iso.predict(predictions[mask])
+
+        return corrected
+
+    def fit_transform(
+        self,
+        y: np.ndarray,
+        predictions: np.ndarray,
+        sensitive_features: np.ndarray,
+        exposure: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """
+        Fit and immediately transform training predictions.
+
+        Convenience method equivalent to fit(...).transform(...) on the
+        same data. Note that this applies the correction to the training
+        data itself — the result is the in-sample isotonic fit.
+
+        Parameters
+        ----------
+        y :
+            Observed outcomes. Shape (n,).
+        predictions :
+            Model predictions. Shape (n,).
+        sensitive_features :
+            Group labels. Shape (n,).
+        exposure :
+            Exposure weights. If None, defaults to 1.0 for all.
+
+        Returns
+        -------
+        np.ndarray
+            Corrected predictions, same shape as predictions.
+        """
+        return self.fit(y, predictions, sensitive_features, exposure).transform(
+            predictions, sensitive_features
+        )

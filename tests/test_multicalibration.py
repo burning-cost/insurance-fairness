@@ -638,3 +638,309 @@ class TestIterativeMulticalibrationCorrectorEdgeCases:
         out = corrector.transform(y_pred, new_prot)
         # No correction factor for "Z", so output should equal input
         np.testing.assert_array_equal(out, y_pred)
+
+
+# ---------------------------------------------------------------------------
+# Test: stopping criterion fix (Task 1 — Gap 4)
+#
+# The paper's stopping criterion (Section 7.1.2) is:
+#   max_{k,l} eta * |b_tilde_kl - 1| < delta
+# where b_tilde_kl is the BLENDED factor (not the raw b_hat_kl AE ratio).
+#
+# The key differences from the old criterion (max |b_hat_kl - 1| < delta):
+# 1. We check the blended factor b_tilde_kl, not the raw AE.
+# 2. We multiply by eta (the learning rate), so delta is in terms of the
+#    actual correction applied per step, not the raw data bias.
+# ---------------------------------------------------------------------------
+
+
+class TestStoppingCriterionPaperCompliant:
+    def test_convergence_metric_uses_blended_factor(self):
+        """
+        The convergence history values must reflect eta * |b_tilde_kl - 1|,
+        not |b_hat_kl - 1|.
+
+        We verify this by checking that when eta < 1, the reported convergence
+        values are strictly smaller than they would be for eta=1 on the same
+        data — because the metric is eta * |b_tilde - 1|, not |b_hat - 1|.
+        """
+        y_true, y_pred, protected, exposure = make_biased_data(
+            n=3000, bias_factor=1.5, seed=55
+        )
+
+        # eta=1.0: metric = 1.0 * |b_tilde - 1|
+        c1 = IterativeMulticalibrationCorrector(
+            n_bins=5, eta=1.0, delta=1e-9, c=50.0, max_iter=3
+        )
+        c1.fit(y_true, y_pred, protected, exposure)
+        rep1 = c1.convergence_report()
+
+        # eta=0.5: metric = 0.5 * |b_tilde - 1|
+        c2 = IterativeMulticalibrationCorrector(
+            n_bins=5, eta=0.5, delta=1e-9, c=50.0, max_iter=3
+        )
+        c2.fit(y_true, y_pred, protected, exposure)
+        rep2 = c2.convergence_report()
+
+        # First iteration metric should be approximately halved for eta=0.5
+        m1 = rep1["max_relative_bias_per_iteration"][0]
+        m2 = rep2["max_relative_bias_per_iteration"][0]
+        # m2 should be roughly m1/2 (both use same data, same blended factor,
+        # but eta scales the metric differently)
+        assert m2 < m1, (
+            f"eta=0.5 metric ({m2:.4f}) should be < eta=1.0 metric ({m1:.4f})"
+        )
+        # And the ratio should be close to 0.5 (within 20% tolerance for noise)
+        ratio = m2 / m1 if m1 > 0 else 1.0
+        assert 0.3 < ratio < 0.7, (
+            f"Ratio of metrics {ratio:.3f} should be ~0.5 (eta halved)"
+        )
+
+    def test_stopping_criterion_consistent_with_eta(self):
+        """
+        With delta=0.05 and eta=0.5, the algorithm should stop when
+        0.5 * |b_tilde - 1| < 0.05, i.e., |b_tilde - 1| < 0.1.
+
+        This is stricter in absolute b_tilde terms than delta=0.05 alone
+        would be, but weaker than the old criterion which used raw |b_hat - 1|.
+        The test just verifies convergence_report reflects the correct metric.
+        """
+        y_true, y_pred, protected, exposure = make_calibrated_data(n=5000, seed=11)
+        corrector = IterativeMulticalibrationCorrector(
+            n_bins=5, eta=0.5, delta=0.05, c=50.0, max_iter=50
+        )
+        corrector.fit(y_true, y_pred, protected, exposure)
+        report = corrector.convergence_report()
+
+        # Calibrated model should converge
+        assert report["converged"] is True
+        # Final metric must be below delta
+        final_metric = report["max_relative_bias_per_iteration"][-1]
+        assert final_metric < 0.05, (
+            f"Final metric {final_metric:.4f} should be < delta=0.05"
+        )
+
+    def test_blended_vs_raw_ae_convergence_difference(self):
+        """
+        Demonstrate that the corrected criterion (blended b_tilde) converges
+        at a different rate than checking raw b_hat_kl.
+
+        We fit a biased model and check that the convergence history contains
+        the expected values (eta-scaled blended factors, not raw AEs).
+
+        Specifically: if z_kl < 1 (partial credibility), b_tilde_kl is
+        shrunk toward b_hat_k, so |b_tilde - 1| <= |b_hat_kl - 1|.
+        After eta scaling, the metric is further reduced.
+        """
+        rng = np.random.default_rng(77)
+        n = 3000
+        exposure = rng.uniform(0.5, 2.0, size=n)
+        y_pred = rng.gamma(2.0, 50.0, size=n)
+        protected = rng.integers(0, 2, size=n).astype(str)
+
+        expected = y_pred * exposure
+        y_true = rng.poisson(expected) / exposure
+        mask1 = protected == "1"
+        y_true[mask1] = rng.poisson(expected[mask1] * 0.6) / exposure[mask1]
+
+        # Low c means partial credibility for many cells
+        corrector = IterativeMulticalibrationCorrector(
+            n_bins=5, eta=0.3, delta=1e-9, c=5000.0, max_iter=2
+        )
+        corrector.fit(y_true, y_pred, protected, exposure)
+        report = corrector.convergence_report()
+
+        # Metric should be positive (there is bias) but reduced by eta and shrinkage
+        assert report["max_relative_bias_per_iteration"][0] > 0
+        # With eta=0.3 and c=5000 (low credibility), metric must be < raw |AE-1|
+        # The raw |AE-1| for group 1 should be ~0.4; metric = 0.3 * |b_tilde-1|
+        # where b_tilde is shrunk, so metric < 0.3 * 0.4 = 0.12
+        assert report["max_relative_bias_per_iteration"][0] < 0.15
+
+
+# ---------------------------------------------------------------------------
+# Test: IsotonicMulticalibrationCorrector (Task 2 — Gap 3)
+# ---------------------------------------------------------------------------
+
+
+class TestIsotonicMulticalibrationCorrectorImport:
+    def test_import_from_package(self):
+        """IsotonicMulticalibrationCorrector must be importable from top-level."""
+        from insurance_fairness import IsotonicMulticalibrationCorrector as IMC
+        from insurance_fairness.multicalibration import IsotonicMulticalibrationCorrector
+        assert IMC is IsotonicMulticalibrationCorrector
+
+    def test_in_all(self):
+        """IsotonicMulticalibrationCorrector must be in __all__."""
+        import insurance_fairness
+        assert "IsotonicMulticalibrationCorrector" in insurance_fairness.__all__
+
+
+class TestIsotonicMulticalibrationCorrectorBasic:
+    def test_fit_returns_self(self):
+        y_true, y_pred, protected, exposure = make_calibrated_data(n=1000)
+        from insurance_fairness import IsotonicMulticalibrationCorrector
+        iso = IsotonicMulticalibrationCorrector()
+        result = iso.fit(y_true, y_pred, protected, exposure)
+        assert result is iso
+
+    def test_transform_before_fit_raises(self):
+        from insurance_fairness import IsotonicMulticalibrationCorrector
+        iso = IsotonicMulticalibrationCorrector()
+        with pytest.raises(RuntimeError, match="fit"):
+            iso.transform(np.array([1.0, 2.0]), np.array(["A", "B"]))
+
+    def test_transform_output_shape(self):
+        y_true, y_pred, protected, exposure = make_biased_data(n=2000)
+        from insurance_fairness import IsotonicMulticalibrationCorrector
+        iso = IsotonicMulticalibrationCorrector()
+        iso.fit(y_true, y_pred, protected, exposure)
+        corrected = iso.transform(y_pred, protected)
+        assert corrected.shape == y_pred.shape
+
+    def test_fit_transform_shape(self):
+        y_true, y_pred, protected, exposure = make_biased_data(n=2000)
+        from insurance_fairness import IsotonicMulticalibrationCorrector
+        iso = IsotonicMulticalibrationCorrector()
+        corrected = iso.fit_transform(y_true, y_pred, protected, exposure)
+        assert corrected.shape == y_pred.shape
+
+    def test_mismatched_lengths_raises(self):
+        from insurance_fairness import IsotonicMulticalibrationCorrector
+        iso = IsotonicMulticalibrationCorrector()
+        with pytest.raises(ValueError):
+            iso.fit(
+                np.array([1.0, 2.0]),
+                np.array([1.0]),
+                np.array(["A", "B"]),
+            )
+
+    def test_negative_predictions_raises(self):
+        from insurance_fairness import IsotonicMulticalibrationCorrector
+        iso = IsotonicMulticalibrationCorrector()
+        with pytest.raises(ValueError, match="non-negative"):
+            iso.fit(
+                np.array([1.0, 2.0]),
+                np.array([-1.0, 2.0]),
+                np.array(["A", "B"]),
+            )
+
+    def test_no_exposure_defaults_to_ones(self):
+        """fit() without exposure should match exposure=ones."""
+        y_true, y_pred, protected, _ = make_biased_data(n=1000)
+        from insurance_fairness import IsotonicMulticalibrationCorrector
+        iso1 = IsotonicMulticalibrationCorrector()
+        iso2 = IsotonicMulticalibrationCorrector()
+        out1 = iso1.fit_transform(y_true, y_pred, protected, exposure=None)
+        out2 = iso2.fit_transform(y_true, y_pred, protected, np.ones(len(y_pred)))
+        np.testing.assert_allclose(out1, out2, rtol=1e-10)
+
+
+class TestIsotonicMulticalibrationCorrectorCorrection:
+    def test_unseen_group_passed_through(self):
+        """Observations in groups not seen at fit() should be unchanged."""
+        y_true, y_pred, protected, exposure = make_biased_data(n=2000)
+        from insurance_fairness import IsotonicMulticalibrationCorrector
+        iso = IsotonicMulticalibrationCorrector()
+        iso.fit(y_true, y_pred, protected, exposure)
+        new_prot = np.array(["UNSEEN"] * len(y_pred))
+        out = iso.transform(y_pred, new_prot)
+        np.testing.assert_array_equal(out, y_pred)
+
+    def test_corrected_output_nonnegative(self):
+        """Corrected predictions should remain non-negative."""
+        y_true, y_pred, protected, exposure = make_biased_data(n=2000)
+        from insurance_fairness import IsotonicMulticalibrationCorrector
+        iso = IsotonicMulticalibrationCorrector()
+        iso.fit(y_true, y_pred, protected, exposure)
+        corrected = iso.transform(y_pred, protected)
+        assert np.all(corrected >= 0.0)
+
+    def test_reduces_bias_for_biased_group(self):
+        """
+        After correction, the mean AE for the biased group should be closer
+        to 1.0 than before correction.
+        """
+        y_true, y_pred, protected, exposure = make_biased_data(
+            n=5000, bias_factor=1.5, seed=88
+        )
+        from insurance_fairness import IsotonicMulticalibrationCorrector, MulticalibrationAudit
+        iso = IsotonicMulticalibrationCorrector()
+        corrected = iso.fit_transform(y_true, y_pred, protected, exposure)
+
+        audit = MulticalibrationAudit(n_bins=5, min_bin_size=20)
+        rep_before = audit.audit(y_true, y_pred, protected, exposure)
+        rep_after = audit.audit(y_true, corrected, protected, exposure)
+
+        dev_before = float(
+            rep_before.bin_group_table
+            .filter(~pl.col("small_cell") & (pl.col("group") == "1"))
+            .select((pl.col("ae_ratio") - 1.0).abs().mean())
+            .item()
+        )
+        dev_after = float(
+            rep_after.bin_group_table
+            .filter(~pl.col("small_cell") & (pl.col("group") == "1"))
+            .select((pl.col("ae_ratio") - 1.0).abs().mean())
+            .item()
+        )
+        assert dev_after < dev_before, (
+            f"Isotonic corrector should reduce bias: before={dev_before:.4f}, "
+            f"after={dev_after:.4f}"
+        )
+
+    def test_single_group(self):
+        """Single group should run without error."""
+        rng = np.random.default_rng(33)
+        n = 500
+        y_pred = rng.uniform(50, 200, n)
+        y_true = rng.uniform(50, 200, n)
+        protected = np.array(["A"] * n)
+        from insurance_fairness import IsotonicMulticalibrationCorrector
+        iso = IsotonicMulticalibrationCorrector()
+        out = iso.fit_transform(y_true, y_pred, protected)
+        assert out.shape == y_pred.shape
+
+    def test_calibrated_model_small_change(self):
+        """
+        For a well-calibrated model, isotonic corrections should be small.
+
+        The isotonic regression of Y on pi, when E[Y|pi] = pi, should
+        produce corrections close to the identity (pi_mbc ≈ pi).
+        We check that the mean absolute correction is small.
+        """
+        y_true, y_pred, protected, exposure = make_calibrated_data(n=5000, seed=123)
+        from insurance_fairness import IsotonicMulticalibrationCorrector
+        iso = IsotonicMulticalibrationCorrector()
+        corrected = iso.fit_transform(y_true, y_pred, protected, exposure)
+
+        # Mean relative correction should be small for a calibrated model
+        rel_change = np.abs(corrected - y_pred) / (y_pred + 1e-8)
+        assert rel_change.mean() < 0.15, (
+            f"Too large average correction for calibrated model: "
+            f"{rel_change.mean():.4f}"
+        )
+
+    def test_out_of_range_clips_not_raises(self):
+        """
+        Predictions at transform() outside the training range should be
+        clipped gracefully (not raise an error) when out_of_bounds='clip'.
+        """
+        rng = np.random.default_rng(44)
+        n = 500
+        y_pred_train = rng.uniform(50, 200, n)
+        y_true_train = rng.uniform(50, 200, n)
+        protected = np.array(["A", "B"] * (n // 2))
+
+        from insurance_fairness import IsotonicMulticalibrationCorrector
+        iso = IsotonicMulticalibrationCorrector(out_of_bounds="clip")
+        iso.fit(y_true_train, y_pred_train, protected)
+
+        # New predictions with values outside [50, 200]
+        y_pred_new = np.array([1.0, 10.0, 500.0, 999.0])
+        prot_new = np.array(["A", "B", "A", "B"])
+
+        # Should not raise
+        out = iso.transform(y_pred_new, prot_new)
+        assert out.shape == y_pred_new.shape
+        assert np.all(np.isfinite(out))
