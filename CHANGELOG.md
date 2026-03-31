@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.9.0 (2026-03-31)
+- feat: add SequentialOTCorrector — fixes calibration bug in WassersteinCorrector
+  for K >= 2 protected attributes. WassersteinCorrector fitted all attribute ECDFs
+  on f* then applied them sequentially; this is wrong because the OT map for
+  attribute k is applied to f_{k-1} which has a different distribution from f*.
+  SequentialOTCorrector calibrates each step's ECDF on f_{k-1}, making the OT map
+  well-specified. For K=1 the two classes are identical. API: fit/transform follow
+  WassersteinCorrector conventions. Per-attribute epsilon list supported.
+  get_intermediate_predictions() returns [f_0, ..., f_K] for diagnostics.
+  unfairness_reductions_ and wasserstein_distances_ properties for reporting.
+  group_min_samples warning when group sizes are too small for reliable ECDF.
+  55 tests in test_ot_sequential_corrector.py.
+- feat: add correction='sequential_wasserstein' and 'lindholm+sequential_wasserstein'
+  options to DiscriminationFreePrice. These wire SequentialOTCorrector into the main
+  pricing pipeline. 'lindholm+sequential_wasserstein' is the recommended option when
+  both conditional fairness and demographic parity are required.
+- docs: add calibration bug warning to WassersteinCorrector docstring.
+
 ## v0.6.6 (2026-03-26)
 - fix: remove `scikit-learn<1.6` upper cap — this constraint blocked co-installation
   with insurance-causal and other stack libraries that require sklearn>=1.6. Audit of

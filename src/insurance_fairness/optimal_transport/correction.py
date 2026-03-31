@@ -1,6 +1,7 @@
 """Lindholm marginalisation and Wasserstein barycenter correction."""
 from __future__ import annotations
 
+import warnings
 from typing import Callable, Literal
 
 import numpy as np
@@ -301,6 +302,13 @@ class WassersteinCorrector:
     This is the *secondary* correction. It achieves demographic parity, not
     conditional fairness. Use Lindholm as the primary correction and this
     only when simultaneous multi-attribute correction is required.
+
+    WARNING: When K >= 2 protected attributes are used, this class has a
+    calibration bug — all attribute ECDFs are fitted on the original
+    predictions f*, but the OT map for attribute k is applied to f_{k-1}
+    (already modified by prior corrections). The ECDF is no longer the
+    correct distribution for the input it receives. Use SequentialOTCorrector
+    for the correct K >= 2 treatment.
     """
 
     def __init__(
@@ -443,6 +451,335 @@ class WassersteinCorrector:
     @property
     def wasserstein_distances_(self) -> dict[str, float]:
         """W2 distance between group distributions prior to correction."""
+        if not self._is_fitted:
+            raise RuntimeError("Call fit() first")
+        return dict(self._w2_distances)
+
+
+class SequentialOTCorrector:
+    """Correctly-calibrated sequential OT barycenter correction for K >= 2 attributes.
+
+    Fixes the calibration bug in WassersteinCorrector when multiple protected
+    attributes are used. The bug: WassersteinCorrector fits ALL attribute ECDFs
+    on f* (original predictions), then applies them sequentially. This is wrong
+    for K >= 2 because the OT map for attribute k is applied to f_{k-1}, but the
+    ECDF was estimated from f*. The OT map T_k = Q_bar_k ∘ F_k is only valid
+    if F_k is the CDF of the distribution that z comes from.
+
+    Correct approach: at calibration step k, estimate F_k on f_{k-1}
+    (the predictions after k-1 prior corrections). Then the OT map T_k is
+    applied to something actually drawn from F_k.
+
+    For K=1 this is identical to WassersteinCorrector.
+
+    Attributes fitted at calibration:
+    - per-step ECDFs: F_k estimated on f_{k-1}
+    - per-step barycenter quantile functions: Q_bar_k
+
+    At test time, the stored calibration ECDFs and barycenter QFs are applied
+    sequentially to the test predictions — no re-fitting.
+
+    Parameters
+    ----------
+    protected_attrs:
+        Attribute correction order. The order matters: attributes corrected
+        earlier see less distortion from prior steps. In practice, use the
+        attribute with the largest initial W1 unfairness first.
+    epsilon:
+        Blend factor between fully corrected (0.0) and uncorrected (1.0).
+        Can be a scalar (same for all attributes) or a list of length K
+        (per-attribute blend). Partial correction trades off accuracy loss
+        against fairness gain.
+    n_quantiles:
+        Grid size for quantile interpolation. 1000 is sufficient for most
+        portfolios; increase to 5000 for very large portfolios or when
+        group distributions have thin tails.
+    log_space:
+        Operate on log(predictions). Recommended True for GLM outputs
+        (Poisson frequency, Gamma severity) where the natural space is
+        multiplicative. False for already-linear outputs.
+    exposure_weighted:
+        Weight ECDFs by policy exposure. Should be True for most insurance
+        use cases where policies have different risk periods.
+    group_min_samples:
+        Minimum group size before emitting a warning. Groups smaller than
+        this produce unreliable ECDF estimates.
+    """
+
+    def __init__(
+        self,
+        protected_attrs: list[str],
+        epsilon: float | list[float] = 0.0,
+        n_quantiles: int = 1000,
+        log_space: bool = True,
+        exposure_weighted: bool = True,
+        group_min_samples: int = 100,
+    ) -> None:
+        # Validate and normalise epsilon
+        if isinstance(epsilon, (int, float)):
+            validate_epsilon(float(epsilon))
+            self._epsilons: list[float] = [float(epsilon)] * len(protected_attrs)
+        else:
+            if len(epsilon) != len(protected_attrs):
+                raise ValueError(
+                    f"epsilon list length ({len(epsilon)}) must match "
+                    f"protected_attrs length ({len(protected_attrs)})"
+                )
+            for e in epsilon:
+                validate_epsilon(float(e))
+            self._epsilons = [float(e) for e in epsilon]
+
+        self.protected_attrs = protected_attrs
+        self.epsilon = epsilon
+        self.n_quantiles = n_quantiles
+        self.log_space = log_space
+        self.exposure_weighted = exposure_weighted
+        self.group_min_samples = group_min_samples
+
+        # Populated by fit()
+        # _step_ecdfs[k] = {attr_k: {group -> (ecdf_x, ecdf_y)}}
+        # _step_bar_qfs[k] = {attr_k: (u_grid, bar_qf)}
+        self._step_ecdfs: list[dict[str, dict]] = []
+        self._step_bar_qfs: list[dict[str, tuple[np.ndarray, np.ndarray]]] = []
+        self._step_group_weights: list[dict[str, dict]] = []
+        self._intermediate_predictions: list[np.ndarray] | None = None
+        self._unfairness_reductions: dict[str, tuple[float, float]] = {}
+        self._w2_distances: dict[str, float] = {}
+        self._is_fitted = False
+
+    def fit(
+        self,
+        predictions: np.ndarray,
+        D_calib: pl.DataFrame,
+        exposure: np.ndarray | None = None,
+    ) -> "SequentialOTCorrector":
+        """K-step sequential calibration.
+
+        Step k:
+          1. Compute f_{k-1} in working (log or linear) space.
+          2. Estimate F_k (per-group ECDF) and Q_bar_k (barycenter QF) on f_{k-1}.
+          3. Apply OT map: f_k = Q_bar_k(F_k(f_{k-1})).
+          4. Apply epsilon blend: f_k = (1 - eps_k) * f_k + eps_k * f_{k-1}.
+
+        Stores intermediate f_0..f_K in ``_intermediate_predictions`` for
+        diagnostic use via ``get_intermediate_predictions()``.
+
+        Parameters
+        ----------
+        predictions:
+            Base model predictions mu_hat(x_i), shape (n,). Must be strictly
+            positive (natural scale, not log scale) regardless of log_space.
+        D_calib:
+            Protected attribute columns, shape (n, K).
+        exposure:
+            Per-policy exposure weights, shape (n,). Defaults to ones.
+        """
+        predictions = validate_predictions(predictions)
+        n = len(predictions)
+        exposure = validate_exposure(exposure, n)
+        validate_protected_attrs_present(self.protected_attrs, D_calib, "D_calib")
+
+        # Reset state (supports re-fitting)
+        self._step_ecdfs = []
+        self._step_bar_qfs = []
+        self._step_group_weights = []
+        self._unfairness_reductions = {}
+        self._w2_distances = {}
+
+        # f_0 is always the original predictions (natural scale)
+        intermediates: list[np.ndarray] = [predictions.copy()]
+
+        # Working array: log or linear depending on log_space
+        if self.log_space:
+            working = np.log(predictions)
+        else:
+            working = predictions.copy()
+
+        for k, attr in enumerate(self.protected_attrs):
+            col = D_calib[attr].to_numpy()
+            groups = np.unique(col)
+
+            # Check group sizes
+            for g in groups:
+                group_n = int((col == g).sum())
+                if group_n < self.group_min_samples:
+                    warnings.warn(
+                        f"Group '{g}' for attribute '{attr}' has only {group_n} samples "
+                        f"(< group_min_samples={self.group_min_samples}). "
+                        "ECDF estimates will be unreliable.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+
+            ecdfs_attr: dict = {}
+            weights_attr: dict = {}
+            total_exp = exposure.sum()
+
+            # Step k: calibrate ECDF on current working values (= f_{k-1} in working space)
+            for g in groups:
+                mask = col == g
+                group_vals = working[mask]
+                group_exp = exposure[mask] if self.exposure_weighted else np.ones(mask.sum())
+                ecdf_x, ecdf_y = exposure_weighted_ecdf(group_vals, group_exp)
+                ecdfs_attr[g] = (ecdf_x, ecdf_y)
+                weights_attr[g] = float(exposure[mask].sum() / total_exp)
+
+            ecdf_list = [ecdfs_attr[g] for g in groups]
+            w_arr = np.array([weights_attr[g] for g in groups])
+            u_grid, bar_qf = barycenter_quantile(ecdf_list, w_arr, self.n_quantiles)
+
+            # W1 unfairness before this step (mean absolute deviation across groups)
+            w1_before = self._compute_w1_unfairness(working, col, groups)
+
+            # Apply OT map: corrected[i] = Q_bar(F_{d_i}(working[i]))
+            corrected = working.copy()
+            for g, (ecdf_x, ecdf_y) in ecdfs_attr.items():
+                mask = col == g
+                if not mask.any():
+                    continue
+                u_vals = np.interp(working[mask], ecdf_x, ecdf_y)
+                corrected[mask] = np.interp(u_vals, u_grid, bar_qf)
+
+            # Apply epsilon blend in working space
+            eps_k = self._epsilons[k]
+            if eps_k > 0:
+                corrected = (1.0 - eps_k) * corrected + eps_k * working
+
+            # W1 unfairness after this step
+            w1_after = self._compute_w1_unfairness(corrected, col, groups)
+            self._unfairness_reductions[attr] = (w1_before, w1_after)
+
+            # W2 distance (two-group case only, for reporting)
+            if len(groups) == 2:
+                g0, g1 = groups[0], groups[1]
+                mask0 = col == g0
+                mask1 = col == g1
+                w2 = wasserstein_distance_1d(
+                    working[mask0],
+                    working[mask1],
+                    exposure[mask0],
+                    exposure[mask1],
+                )
+                self._w2_distances[attr] = w2
+
+            # Store calibration state for this step
+            self._step_ecdfs.append({attr: ecdfs_attr})
+            self._step_bar_qfs.append({attr: (u_grid, bar_qf)})
+            self._step_group_weights.append({attr: weights_attr})
+
+            # Advance working to f_k
+            working = corrected
+
+            # Store f_k in natural scale
+            if self.log_space:
+                intermediates.append(np.exp(working))
+            else:
+                intermediates.append(working.copy())
+
+        self._intermediate_predictions = intermediates
+        self._is_fitted = True
+        return self
+
+    def transform(
+        self,
+        predictions: np.ndarray,
+        D_test: pl.DataFrame,
+    ) -> np.ndarray:
+        """Apply K stored OT maps sequentially to test predictions.
+
+        Uses the CALIBRATION ECDFs and barycenter QFs, not re-fitted ones.
+        This is the correct inference-time procedure: the calibration ECDFs
+        are the reference distributions; the test predictions are mapped
+        through them.
+
+        Parameters
+        ----------
+        predictions:
+            Base model predictions on the test set, shape (n,). Natural scale.
+        D_test:
+            Protected attribute columns for the test set, shape (n, K).
+        """
+        if not self._is_fitted:
+            raise RuntimeError("Call fit() before transform()")
+        predictions = validate_predictions(predictions)
+        validate_protected_attrs_present(self.protected_attrs, D_test, "D_test")
+
+        if self.log_space:
+            working = np.log(predictions)
+        else:
+            working = predictions.copy()
+
+        for k, attr in enumerate(self.protected_attrs):
+            col = D_test[attr].to_numpy()
+            ecdfs_attr = self._step_ecdfs[k][attr]
+            u_grid, bar_qf = self._step_bar_qfs[k][attr]
+
+            corrected = working.copy()
+            for g, (ecdf_x, ecdf_y) in ecdfs_attr.items():
+                mask = col == g
+                if not mask.any():
+                    continue
+                u_vals = np.interp(working[mask], ecdf_x, ecdf_y)
+                corrected[mask] = np.interp(u_vals, u_grid, bar_qf)
+
+            eps_k = self._epsilons[k]
+            if eps_k > 0:
+                corrected = (1.0 - eps_k) * corrected + eps_k * working
+
+            working = corrected
+
+        if self.log_space:
+            return np.exp(working)
+        else:
+            return working
+
+    def get_intermediate_predictions(self) -> list[np.ndarray] | None:
+        """Return [f_0, f_1, ..., f_K] from the calibration pass.
+
+        f_0 is the original predictions. f_k is the predictions after k
+        sequential OT corrections. All arrays are on the natural (not log)
+        scale.
+
+        Returns None if fit() has not been called.
+        """
+        return self._intermediate_predictions
+
+    @staticmethod
+    def _compute_w1_unfairness(
+        working: np.ndarray,
+        col: np.ndarray,
+        groups: np.ndarray,
+    ) -> float:
+        """W1 unfairness: mean absolute deviation of group means from overall mean.
+
+        Operates on the working-space values (log or linear). A value of 0
+        means all group means are equal (perfect demographic parity in that
+        space).
+        """
+        overall_mean = float(working.mean())
+        deviations = [abs(float(working[col == g].mean()) - overall_mean) for g in groups]
+        return float(np.mean(deviations))
+
+    @property
+    def unfairness_reductions_(self) -> dict[str, tuple[float, float]]:
+        """W1 unfairness per attribute: dict[attr] = (before, after).
+
+        'Before' is measured just before step k's correction; 'after' is
+        just after. For the first attribute, 'before' is the unfairness on
+        the original predictions. For subsequent attributes, 'before' is the
+        unfairness after all prior corrections.
+        """
+        if not self._is_fitted:
+            raise RuntimeError("Call fit() first")
+        return dict(self._unfairness_reductions)
+
+    @property
+    def wasserstein_distances_(self) -> dict[str, float]:
+        """W2 distance between group distributions (two-group case only).
+
+        Measured on the input to each step (i.e. f_{k-1} for step k).
+        Only populated for attributes with exactly two groups.
+        """
         if not self._is_fitted:
             raise RuntimeError("Call fit() first")
         return dict(self._w2_distances)

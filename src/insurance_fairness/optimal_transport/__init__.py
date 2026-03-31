@@ -38,7 +38,7 @@ Côté (2025). Causal path decomposition for proxy discrimination in insurance.
 """
 
 from .causal import CausalGraph, PathDecomposer, PathDecomposition
-from .correction import LindholmCorrector, WassersteinCorrector
+from .correction import LindholmCorrector, SequentialOTCorrector, WassersteinCorrector
 from .pricing import DiscriminationFreePrice, PricingResult
 from .report import FairnessReport, FCAReport
 
@@ -48,6 +48,7 @@ __all__ = [
     "PathDecomposition",
     "LindholmCorrector",
     "WassersteinCorrector",
+    "SequentialOTCorrector",
     "DiscriminationFreePrice",
     "PricingResult",
     "FairnessReport",
