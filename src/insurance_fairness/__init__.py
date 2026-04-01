@@ -228,6 +228,56 @@ Quick start::
     report.summary()
     report.to_markdown("audit_report.md")
 
+
+v1.0.0 adds :class:`IntersectionalFairnessAudit` and
+:class:`DistanceCovFairnessRegulariser` — intersectional fairness via
+Concatenated Distance Covariance (CCdCov). Implements Lee, Antonio, Avanzi,
+Marchi & Zhou (2025, arXiv:2509.08163).
+
+The key insight: auditing each protected attribute (gender, age, occupation)
+separately does not guarantee intersectional fairness. A model can price young
+women systematically differently from both young men and elderly women while
+passing all marginal fairness tests. This is fairness gerrymandering.
+
+CCdCov decomposes as:
+
+    CCdCov(ŷ, S) = Σ_k dCov²(ŷ, s_k) + η(ŷ, s)
+
+where η is the intersectional residual — dependence on the *joint* attribute
+distribution that the marginal terms miss. CCdCov = 0 iff ŷ ⊥ (s_1,...,s_d)
+jointly::
+
+    from insurance_fairness.intersectional import (
+        IntersectionalFairnessAudit,
+        DistanceCovFairnessRegulariser,
+    )
+
+    # Audit existing model
+    audit = IntersectionalFairnessAudit(
+        protected_attrs=["gender", "age_band"],
+        continuous_attrs=["age_band"],
+    )
+    report = audit.audit(y_hat, df_protected)
+    print(f"CCdCov = {report.ccDcov:.4f}")
+    print(f"eta (intersectional residual) = {report.eta:.4f}")
+    print(f"D_JS = {report.js_divergence_overall:.4f}")
+    print(report.summary())
+
+    # Training-time regulariser
+    reg = DistanceCovFairnessRegulariser(
+        protected_attrs=["gender", "age_band"],
+        method="ccDcov",
+        lambda_val=0.5,
+    )
+    total_loss = deviance_loss + reg.penalty(y_hat, D)
+
+Requires optional dependency: ``pip install insurance-fairness[intersectional]``
+
+References
+----------
+Lee, H.M., Antonio, K., Avanzi, B., Marchi, L., Zhou, R. (2025). Machine
+Learning with Multitype Protected Attributes: Intersectional Fairness through
+Regularisation. arXiv:2509.08163.
 References
 ----------
 Lindholm, Richman, Tsanakas, Wüthrich (2022). Discrimination-Free Insurance
@@ -294,6 +344,12 @@ from insurance_fairness.proxy_vulnerability import (
     partition_by_proxy_vulnerability,
 )
 from insurance_fairness.report import generate_markdown_report
+from insurance_fairness.intersectional import (
+    DistanceCovFairnessRegulariser,
+    IntersectionalAuditReport,
+    IntersectionalFairnessAudit,
+    LambdaCalibrationResult,
+)
 
 # Subpackages: import for side-effects / discoverability
 from insurance_fairness import optimal_transport  # noqa: F401
@@ -358,6 +414,11 @@ __all__ = [
     "partition_by_proxy_vulnerability",
     # Reporting
     "generate_markdown_report",
+    # Intersectional fairness (v1.0.0)
+    "DistanceCovFairnessRegulariser",
+    "IntersectionalAuditReport",
+    "IntersectionalFairnessAudit",
+    "LambdaCalibrationResult",
     # Subpackages (import from subpackage directly)
     "optimal_transport",
     "diagnostics",
