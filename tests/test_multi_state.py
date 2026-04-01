@@ -408,8 +408,9 @@ class TestMultiStateFairness:
 
     def test_missing_protected_attr_raises(self, audit, synthetic_obs):
         D_bad = pl.DataFrame({"occupation": synthetic_obs["occupation"].to_list()})
+        df_no_gender = synthetic_obs.drop("gender")
         with pytest.raises(ValueError, match="not found"):
-            audit.run(synthetic_obs, D_bad)
+            audit.run(df_no_gender, D_bad)
 
 
 # ---------------------------------------------------------------------------
