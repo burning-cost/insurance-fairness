@@ -273,6 +273,33 @@ jointly::
 
 Requires optional dependency: ``pip install insurance-fairness[intersectional]``
 
+v1.1.0 adds :class:`MultiStateTransitionFairness` — discrimination-free
+pricing for multi-state Markov insurance models (disability, critical illness,
+long-term care). Extends the Lindholm marginalisation to handle multiple
+competing transition intensities, each fitted as an independent Poisson GLM.
+
+The key problem: a three-state disability model (healthy -> sick -> dead)
+has separate intensities for incidence, recovery, and excess mortality while
+sick. Gender may affect sick->dead but not healthy->sick. Applying a single
+premium-level correction misallocates the adjustment. This class corrects
+each intensity separately, then integrates via the Kolmogorov forward
+equations to obtain a fair net premium::
+
+    from insurance_fairness.multi_state import (
+        MultiStateTransitionFairness,
+        MultiStateFairnessReport,
+    )
+
+    audit = MultiStateTransitionFairness(
+        protected_attrs=["gender"],
+        feature_cols=["age", "occupation"],
+        states=["healthy", "sick", "dead"],
+        cash_flows={"healthy->sick": 1.0},
+        discount_rate=0.05,
+    )
+    report = audit.run(df_obs, D_protected)
+    print(report.summary())
+
 References
 ----------
 Lee, H.M., Antonio, K., Avanzi, B., Marchi, L., Zhou, R. (2025). Machine
@@ -350,6 +377,13 @@ from insurance_fairness.intersectional import (
     IntersectionalFairnessAudit,
     LambdaCalibrationResult,
 )
+from insurance_fairness.multi_state import (
+    KolmogorovPremiumCalculator,
+    MultiStateFairnessReport,
+    MultiStateTransitionFairness,
+    PoissonTransitionFitter,
+    TransitionDataBuilder,
+)
 
 # Subpackages: import for side-effects / discoverability
 from insurance_fairness import optimal_transport  # noqa: F401
@@ -419,6 +453,12 @@ __all__ = [
     "IntersectionalAuditReport",
     "IntersectionalFairnessAudit",
     "LambdaCalibrationResult",
+    # Multi-state transition fairness (v1.1.0)
+    "KolmogorovPremiumCalculator",
+    "MultiStateFairnessReport",
+    "MultiStateTransitionFairness",
+    "PoissonTransitionFitter",
+    "TransitionDataBuilder",
     # Subpackages (import from subpackage directly)
     "optimal_transport",
     "diagnostics",
