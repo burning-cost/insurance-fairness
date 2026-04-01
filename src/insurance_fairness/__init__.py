@@ -355,6 +355,7 @@ from insurance_fairness.indirect import IndirectDiscriminationAudit, IndirectDis
 from insurance_fairness.marginal_fairness import MarginalFairnessPremium, MarginalFairnessReport
 from insurance_fairness.multicalibration import BinSufficiencyResult, IsotonicMulticalibrationCorrector, IterativeMulticalibrationCorrector, LocalGLMMulticalibrationCorrector, MulticalibrationAudit, MulticalibrationReport, ProxySufficiencyReport, proxy_sufficiency_test
 from insurance_fairness.privatized_audit import PrivatizedFairnessAudit, PrivatizedAuditResult
+from insurance_fairness.optimal_ldp import LDPEpsilonAdvisor, OptimalLDPMechanism
 from insurance_fairness.proxy_detection import (
     detect_proxies,
     mutual_information_scores,
@@ -433,6 +434,9 @@ __all__ = [
     # Privatized audit (LDP)
     "PrivatizedFairnessAudit",
     "PrivatizedAuditResult",
+    # Optimal LDP mechanism (v1.1.1)
+    "OptimalLDPMechanism",
+    "LDPEpsilonAdvisor",
     # Proxy detection
     "detect_proxies",
     "ProxyDetectionResult",
