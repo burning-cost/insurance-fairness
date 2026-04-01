@@ -269,14 +269,14 @@ class TransitionDataBuilder:
 
             # Indicator: did this observation end in transition sf->st?
             event_expr = (
-                (pl.col(self.state_from_col).cast(pl.Utf8) == sf)
-                & (pl.col(self.state_to_col).cast(pl.Utf8) == st)
+                (pl.col(self.state_from_col).cast(pl.String) == sf)
+                & (pl.col(self.state_to_col).cast(pl.String) == st)
             ).cast(pl.Int32).alias("event")
 
             # Only keep rows where the origin state is sf (at-risk rows)
             # Plus rows from other states that may be in the data — we keep
             # all at-risk rows for sf (even if they go elsewhere or censor)
-            at_risk_mask = pl.col(self.state_from_col).cast(pl.Utf8) == sf
+            at_risk_mask = pl.col(self.state_from_col).cast(pl.String) == sf
 
             transition_df = (
                 df.filter(at_risk_mask)
@@ -311,7 +311,7 @@ def _col_to_numeric(series: pl.Series, encoding: dict | None) -> tuple[np.ndarra
     Returns (array, encoding_map). encoding_map maps str -> int; None for numeric cols.
     """
     dtype = series.dtype
-    if dtype in (pl.Utf8, pl.Categorical, pl.String):
+    if dtype in (pl.Categorical, pl.String):
         if encoding is None:
             unique_vals = sorted(series.drop_nulls().unique().to_list())
             encoding = {v: i for i, v in enumerate(unique_vals)}
