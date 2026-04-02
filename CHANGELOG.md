@@ -1,5 +1,19 @@
 # Changelog
 
+
+## v1.2.0 (2026-04-02)
+- feat: integrate LipschitzMetric as optional 4th NSGA-II objective in FairnessProblem.
+  Pass lipschitz_feature_cols to NSGA2FairnessOptimiser or FairnessProblem to activate
+  individual fairness as a minimisation objective alongside the existing Gini, group
+  unfairness, and counterfactual unfairness objectives. The Lipschitz constant is
+  normalised by a baseline value (computed at equal mixing weights at construction
+  time) so the objective is scale-free across datasets. Fully backward-compatible:
+  omitting lipschitz_feature_cols preserves the existing 3-objective behaviour.
+  topsis_select() and ParetoResult work with any number of objectives.
+  plot_front() auto-layouts for 4 objectives (6 subplots in 2 rows).
+  New parameters: lipschitz_distance_fn, lipschitz_n_pairs, lipschitz_log_predictions.
+  37 new tests across TestFourObjectiveMode and TestNSGA2FourObjectiveIntegration.
+
 ## v0.9.0 (2026-03-31)
 - feat: add SequentialOTCorrector — fixes calibration bug in WassersteinCorrector
   for K >= 2 protected attributes. WassersteinCorrector fitted all attribute ECDFs

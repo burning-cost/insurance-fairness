@@ -899,3 +899,335 @@ class TestEdgeCases:
         s = result.summary()
         assert "Pareto" in s
         assert "1" in s  # n_solutions = 1
+
+
+# ---------------------------------------------------------------------------
+# G. Four-objective mode (LipschitzMetric as NSGA-II objective)
+# ---------------------------------------------------------------------------
+
+
+class TestFourObjectiveMode:
+    """Tests for FairnessProblem with individual fairness (Lipschitz) as 4th objective."""
+
+    @pytest.fixture
+    def four_obj_problem(
+        self,
+        small_df: pl.DataFrame,
+        biased_model: ArrayModel,
+        fair_model: ArrayModel,
+        y: np.ndarray,
+        exposure: np.ndarray,
+    ) -> FairnessProblem:
+        """FairnessProblem with Lipschitz 4th objective active."""
+        return FairnessProblem(
+            models={"biased": biased_model, "fair": fair_model},
+            X=small_df,
+            y=y,
+            exposure=exposure,
+            protected_col="gender",
+            lipschitz_feature_cols=["age", "vehicle_value"],
+            lipschitz_n_pairs=50,
+        )
+
+    def test_n_obj_is_four(self, four_obj_problem: FairnessProblem):
+        """FairnessProblem with lipschitz_feature_cols should have n_obj=4."""
+        assert four_obj_problem.n_obj == 4
+
+    def test_n_obj_is_three_without_lipschitz(
+        self, fairness_problem: FairnessProblem
+    ):
+        """FairnessProblem without lipschitz_feature_cols should have n_obj=3."""
+        assert fairness_problem.n_obj == 3
+
+    def test_evaluate_returns_four_objectives(self, four_obj_problem: FairnessProblem):
+        """evaluate() should return shape (4,) in four-objective mode."""
+        weights = np.array([0.5, 0.5])
+        result = four_obj_problem.evaluate(weights)
+        assert result.shape == (4,)
+
+    def test_all_objectives_finite(self, four_obj_problem: FairnessProblem):
+        """All four objectives should be finite for well-behaved inputs."""
+        for w in [np.array([1.0, 0.0]), np.array([0.0, 1.0]), np.array([0.5, 0.5])]:
+            result = four_obj_problem.evaluate(w)
+            assert np.all(np.isfinite(result)), f"Non-finite objectives for weights={w}: {result}"
+
+    def test_fourth_objective_non_negative(self, four_obj_problem: FairnessProblem):
+        """Normalised Lipschitz constant must be non-negative."""
+        result = four_obj_problem.evaluate(np.array([0.5, 0.5]))
+        assert result[3] >= 0.0
+
+    def test_three_obj_evaluate_unchanged(self, fairness_problem: FairnessProblem):
+        """Three-objective mode: evaluate() still returns shape (3,) unchanged."""
+        result = fairness_problem.evaluate(np.array([0.5, 0.5]))
+        assert result.shape == (3,)
+
+    def test_lipschitz_feature_cols_missing_raises(
+        self, small_df: pl.DataFrame, y: np.ndarray, exposure: np.ndarray,
+        biased_model: ArrayModel
+    ):
+        """Providing a non-existent feature column should raise ValueError."""
+        with pytest.raises(ValueError, match="lipschitz_feature_cols contains columns not found"):
+            FairnessProblem(
+                models={"m": biased_model},
+                X=small_df,
+                y=y,
+                exposure=exposure,
+                protected_col="gender",
+                lipschitz_feature_cols=["age", "nonexistent_col"],
+            )
+
+    def test_empty_lipschitz_feature_cols_raises(
+        self, small_df: pl.DataFrame, y: np.ndarray, exposure: np.ndarray,
+        biased_model: ArrayModel
+    ):
+        """Passing an empty list for lipschitz_feature_cols should raise ValueError."""
+        with pytest.raises(ValueError, match="must not be empty"):
+            FairnessProblem(
+                models={"m": biased_model},
+                X=small_df,
+                y=y,
+                exposure=exposure,
+                protected_col="gender",
+                lipschitz_feature_cols=[],
+            )
+
+    def test_custom_distance_function_used(
+        self,
+        small_df: pl.DataFrame,
+        biased_model: ArrayModel,
+        fair_model: ArrayModel,
+        y: np.ndarray,
+        exposure: np.ndarray,
+    ):
+        """Custom distance function should be accepted and used without error."""
+        call_count = {"n": 0}
+
+        def manhattan(x1: np.ndarray, x2: np.ndarray) -> float:
+            call_count["n"] += 1
+            return float(np.sum(np.abs(x1 - x2)))
+
+        prob = FairnessProblem(
+            models={"biased": biased_model, "fair": fair_model},
+            X=small_df,
+            y=y,
+            exposure=exposure,
+            protected_col="gender",
+            lipschitz_feature_cols=["age", "vehicle_value"],
+            lipschitz_distance_fn=manhattan,
+            lipschitz_n_pairs=20,
+        )
+        result = prob.evaluate(np.array([0.5, 0.5]))
+        assert result.shape == (4,)
+        assert call_count["n"] > 0  # the custom function was called
+
+    def test_four_obj_topsis_select(self, four_obj_problem: FairnessProblem):
+        """topsis_select should work on 4-column F matrix."""
+        rng = np.random.default_rng(7)
+        F = rng.uniform(0, 1, size=(10, 4))
+        idx = topsis_select(F)
+        assert 0 <= idx < 10
+
+    def test_four_obj_topsis_with_explicit_weights(self):
+        """topsis_select with 4 objectives and explicit weights should return valid index."""
+        F = np.array([
+            [0.1, 0.2, 0.3, 0.1],   # best on all (index 0)
+            [0.9, 0.8, 0.7, 0.9],
+            [0.5, 0.5, 0.5, 0.5],
+        ])
+        idx = topsis_select(F, weights=[0.4, 0.2, 0.2, 0.2])
+        assert idx == 0
+
+    def test_four_obj_topsis_weight_mismatch_raises(self):
+        """Passing 3 weights for a 4-objective problem should raise ValueError."""
+        F = np.random.default_rng(0).uniform(0, 1, size=(5, 4))
+        with pytest.raises(ValueError, match="weights length"):
+            topsis_select(F, weights=[0.5, 0.3, 0.2])
+
+    def test_pareto_result_four_obj_serialisation(self):
+        """ParetoResult with 4 objectives should round-trip via to_dict/from_dict."""
+        rng = np.random.default_rng(1)
+        F = rng.uniform(0, 1, size=(8, 4))
+        weights = rng.dirichlet(np.ones(2), size=8)
+        result = ParetoResult(
+            F=F,
+            weights=weights,
+            model_names=["base", "fair"],
+            n_gen=50,
+            pop_size=20,
+            seed=0,
+            objective_names=["neg_gini", "group_unfairness", "cf_unfairness", "lipschitz_unfairness"],
+        )
+        d = result.to_dict()
+        recovered = ParetoResult.from_dict(d)
+        assert recovered.objective_names == result.objective_names
+        assert recovered.F.shape == (8, 4)
+        np.testing.assert_allclose(recovered.F, F)
+
+    def test_pareto_result_four_obj_selected_point(self):
+        """selected_point() with 4 objectives should accept 4-element weights."""
+        rng = np.random.default_rng(2)
+        F = rng.uniform(0, 1, size=(10, 4))
+        weights_mat = rng.dirichlet(np.ones(2), size=10)
+        result = ParetoResult(
+            F=F,
+            weights=weights_mat,
+            model_names=["base", "fair"],
+            n_gen=50,
+            pop_size=20,
+            seed=0,
+            objective_names=["neg_gini", "group_unfairness", "cf_unfairness", "lipschitz_unfairness"],
+        )
+        idx = result.selected_point(weights=[0.4, 0.2, 0.2, 0.2])
+        assert 0 <= idx < 10
+
+    def test_pareto_result_four_obj_summary(self):
+        """summary() for a 4-objective result should mention all objective names."""
+        rng = np.random.default_rng(3)
+        F = rng.uniform(0, 1, size=(5, 4))
+        weights_mat = rng.dirichlet(np.ones(2), size=5)
+        result = ParetoResult(
+            F=F,
+            weights=weights_mat,
+            model_names=["base", "fair"],
+            n_gen=50,
+            pop_size=20,
+            seed=0,
+            objective_names=["neg_gini", "group_unfairness", "cf_unfairness", "lipschitz_unfairness"],
+        )
+        s = result.summary()
+        assert "lipschitz_unfairness" in s
+        assert "neg_gini" in s
+
+    def test_lipschitz_baseline_normalisation(
+        self,
+        small_df: pl.DataFrame,
+        biased_model: ArrayModel,
+        fair_model: ArrayModel,
+        y: np.ndarray,
+        exposure: np.ndarray,
+    ):
+        """
+        At equal weights, the 4th objective value should be approximately 1.0
+        (since baseline is computed at equal weights and the objective is normalised
+        by that baseline).
+        """
+        prob = FairnessProblem(
+            models={"biased": biased_model, "fair": fair_model},
+            X=small_df,
+            y=y,
+            exposure=exposure,
+            protected_col="gender",
+            lipschitz_feature_cols=["age", "vehicle_value"],
+            lipschitz_n_pairs=100,
+        )
+        # At exactly equal weights, Lipschitz objective == baseline / baseline == 1.0
+        result = prob.evaluate(np.array([1.0, 1.0]))
+        # The objective at equal weights must be 1.0 (within floating-point tolerance)
+        assert abs(result[3] - 1.0) < 1e-6
+
+    def test_constant_models_lipschitz_objective_is_zero(
+        self,
+        small_df: pl.DataFrame,
+        y: np.ndarray,
+        exposure: np.ndarray,
+    ):
+        """
+        When both models produce constant predictions, Lipschitz baseline = 0
+        and the 4th objective should be 0.0 throughout (no individual unfairness
+        is possible if all predictions are identical).
+        """
+        model_a = ConstantModel(100.0)
+        model_b = ConstantModel(200.0)
+        prob = FairnessProblem(
+            models={"a": model_a, "b": model_b},
+            X=small_df,
+            y=y,
+            exposure=exposure,
+            protected_col="gender",
+            lipschitz_feature_cols=["age", "vehicle_value"],
+            lipschitz_n_pairs=50,
+        )
+        # Constant predictions -> baseline Lipschitz = 0 -> 4th objective = 0
+        result = prob.evaluate(np.array([0.5, 0.5]))
+        assert result[3] == 0.0
+
+
+class TestNSGA2FourObjectiveIntegration:
+    """NSGA-II four-objective integration tests (requires pymoo)."""
+
+    @pytest.fixture(autouse=True)
+    def skip_without_pymoo(self):
+        pytest.importorskip("pymoo", reason="pymoo not installed")
+
+    def test_four_obj_nsga2_returns_correct_shape(
+        self,
+        small_df: pl.DataFrame,
+        biased_model: ArrayModel,
+        fair_model: ArrayModel,
+        y: np.ndarray,
+        exposure: np.ndarray,
+    ):
+        """NSGA-II with 4 objectives should return F with 4 columns."""
+        from insurance_fairness.pareto import NSGA2FairnessOptimiser
+
+        optimiser = NSGA2FairnessOptimiser(
+            models={"biased": biased_model, "fair": fair_model},
+            X=small_df,
+            y=y,
+            exposure=exposure,
+            protected_col="gender",
+            lipschitz_feature_cols=["age", "vehicle_value"],
+            lipschitz_n_pairs=30,
+        )
+        result = optimiser.run(pop_size=15, n_gen=8, seed=42)
+        assert result.F.shape[1] == 4
+        assert result.objective_names == [
+            "neg_gini", "group_unfairness", "cf_unfairness", "lipschitz_unfairness"
+        ]
+
+    def test_four_obj_result_has_valid_weights(
+        self,
+        small_df: pl.DataFrame,
+        biased_model: ArrayModel,
+        fair_model: ArrayModel,
+        y: np.ndarray,
+        exposure: np.ndarray,
+    ):
+        """Mixing weights from a 4-objective run should still sum to 1."""
+        from insurance_fairness.pareto import NSGA2FairnessOptimiser
+
+        optimiser = NSGA2FairnessOptimiser(
+            models={"biased": biased_model, "fair": fair_model},
+            X=small_df,
+            y=y,
+            exposure=exposure,
+            protected_col="gender",
+            lipschitz_feature_cols=["age", "vehicle_value"],
+            lipschitz_n_pairs=30,
+        )
+        result = optimiser.run(pop_size=15, n_gen=8, seed=42)
+        row_sums = result.weights.sum(axis=1)
+        np.testing.assert_allclose(row_sums, np.ones(result.n_solutions), atol=1e-6)
+
+    def test_three_obj_mode_unchanged_by_new_params(
+        self,
+        small_df: pl.DataFrame,
+        biased_model: ArrayModel,
+        fair_model: ArrayModel,
+        y: np.ndarray,
+        exposure: np.ndarray,
+    ):
+        """Existing 3-objective interface must be unchanged (backward compat)."""
+        from insurance_fairness.pareto import NSGA2FairnessOptimiser
+
+        optimiser = NSGA2FairnessOptimiser(
+            models={"biased": biased_model, "fair": fair_model},
+            X=small_df,
+            y=y,
+            exposure=exposure,
+            protected_col="gender",
+            # No lipschitz_feature_cols -> 3-objective mode
+        )
+        result = optimiser.run(pop_size=15, n_gen=8, seed=42)
+        assert result.F.shape[1] == 3
+        assert result.objective_names == ["neg_gini", "group_unfairness", "cf_unfairness"]

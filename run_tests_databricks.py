@@ -145,6 +145,7 @@ created = w.jobs.create(
                 client="2",
                 dependencies=[
                     "catboost",
+                    "pymoo>=0.6.1",
                     "polars",
                     "scikit-learn",
                     "scipy",

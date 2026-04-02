@@ -16,10 +16,38 @@ fairness. NSGA-II finds the full Pareto front of non-dominated solutions, so
 the pricing team can make an explicit, documented choice about where on that
 front to sit — rather than discovering the trade-off after deployment.
 
+Three-objective mode (default)
+------------------------------
+Objectives minimised simultaneously:
+
+1. Negative Gini coefficient (accuracy proxy)
+2. Group unfairness (1 − demographic parity ratio)
+3. Counterfactual unfairness (1 − counterfactual fairness score)
+
+Four-objective mode (individual fairness)
+-----------------------------------------
+Pass ``lipschitz_feature_cols`` (plus optionally ``lipschitz_distance_fn``,
+``lipschitz_n_pairs``, ``lipschitz_log_predictions``) to activate a fourth
+objective:
+
+4. Normalised Lipschitz constant — the sampled Lipschitz constant of the
+   ensemble, normalised by the baseline Lipschitz constant (computed once at
+   construction for equal weights). This objective is 1.0 at the baseline and
+   decreases as the ensemble becomes smoother. Values above 1.0 mean the
+   ensemble is *less* individually fair than the equal-weight baseline.
+
+The Lipschitz objective is deliberately opt-in because it requires a
+user-defined distance function that is meaningful for your rating factors.
+The default Euclidean distance is almost never appropriate for heterogeneous
+insurance data. Pass a custom ``lipschitz_distance_fn`` — for example, one
+that uses Gower distance or a weighted combination of actuarial feature
+distances.
+
 Workflow::
 
     from insurance_fairness.pareto import NSGA2FairnessOptimiser
 
+    # Three-objective mode (default)
     optimiser = NSGA2FairnessOptimiser(
         models={'base': model_a, 'fair': model_b, 'conservative': model_c},
         X=X_test,
@@ -30,6 +58,23 @@ Workflow::
     result = optimiser.run(pop_size=100, n_gen=200, seed=42)
     selected_idx = result.selected_point(weights=[0.4, 0.3, 0.3])
     result.plot_front(highlight=selected_idx)
+
+    # Four-objective mode (individual fairness via Lipschitz)
+    import numpy as np
+    def gower_dist(x1, x2):
+        return float(np.mean(np.abs(x1 - x2)))
+
+    optimiser_4obj = NSGA2FairnessOptimiser(
+        models={'base': model_a, 'fair': model_b},
+        X=X_test,
+        y=y_test,
+        exposure=exposure,
+        protected_col='gender',
+        lipschitz_feature_cols=['age', 'vehicle_value', 'ncd'],
+        lipschitz_distance_fn=gower_dist,
+    )
+    result = optimiser_4obj.run(pop_size=100, n_gen=200, seed=42)
+    selected_idx = result.selected_point(weights=[0.4, 0.2, 0.2, 0.2])
 
 Optional dependency
 -------------------
@@ -59,6 +104,7 @@ Pricing. ASTIN Bulletin 52(1), 55-89.
 from __future__ import annotations
 
 import json
+import itertools
 import warnings
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
@@ -100,8 +146,8 @@ class FairnessProblem:
     """
     Multi-objective optimisation problem over an ensemble of pricing models.
 
-    Wraps ``pymoo.core.problem.ElementwiseProblem`` and defines three objectives
-    to minimise simultaneously:
+    Wraps ``pymoo.core.problem.ElementwiseProblem`` and defines three or four
+    objectives to minimise simultaneously:
 
     1. Negative accuracy — specifically, negative Gini coefficient of the
        ensemble's predictions. Minimising this maximises discrimination.
@@ -114,6 +160,12 @@ class FairnessProblem:
        counterfactual_fairness_score is the proportion of policies for which
        flipping the protected characteristic changes the prediction by less
        than a tolerance threshold.
+
+    4. (Optional) Individual unfairness — the sampled Lipschitz constant of the
+       ensemble, normalised by the baseline value at equal mixing weights.
+       Activated by passing ``lipschitz_feature_cols``. A value of 1.0 matches
+       the equal-weight baseline; lower is better. See the module docstring for
+       guidance on choosing a distance function.
 
     Decision variables are the mixing weights w_k over K pre-trained models.
     The weights are constrained to sum to 1.0 via normalisation inside
@@ -144,6 +196,38 @@ class FairnessProblem:
     cat_features:
         List of categorical feature column names. Required for CatBoost Pool
         construction if predictions are not pre-computed.
+    lipschitz_feature_cols:
+        List of numeric column names in X to use as the feature matrix for
+        Lipschitz estimation. Passing this list activates the fourth objective.
+        Columns must be numeric and must not contain nulls. Do not include the
+        protected characteristic column — individual fairness is assessed
+        conditional on non-protected features.
+    lipschitz_distance_fn:
+        Callable ``(x1, x2) -> float`` defining the distance between two
+        policy feature vectors. If None, Euclidean distance is used (rarely
+        appropriate for heterogeneous insurance features — pass a custom
+        function such as Gower distance). Only used when
+        ``lipschitz_feature_cols`` is provided.
+    lipschitz_n_pairs:
+        Number of random policy pairs to sample when estimating the Lipschitz
+        constant. Larger values give a more stable estimate. Default 500.
+    lipschitz_log_predictions:
+        If True, compute ``|log(f(x)) - log(f(x'))|`` in the numerator.
+        Appropriate for multiplicative pricing models with a log link.
+        Default True.
+
+    Notes
+    -----
+    The Lipschitz objective is normalised by the baseline value (equal
+    mixing weights across all models). This prevents the objective value from
+    varying with the absolute scale of predictions and makes the Pareto front
+    easier to interpret: a value of 1.0 means the ensemble is as individually
+    fair as the equal-weight ensemble; lower is better.
+
+    If all models produce identical predictions, the baseline Lipschitz
+    constant is zero and normalisation is ill-defined. In that case the
+    Lipschitz objective is set to 0.0 throughout (the ensemble cannot be
+    made more individually fair by changing weights).
     """
 
     def __init__(
@@ -156,6 +240,10 @@ class FairnessProblem:
         prediction_col: Optional[str] = None,
         cf_tolerance: float = 0.05,
         cat_features: Optional[List[str]] = None,
+        lipschitz_feature_cols: Optional[List[str]] = None,
+        lipschitz_distance_fn: Optional[Callable[[np.ndarray, np.ndarray], float]] = None,
+        lipschitz_n_pairs: int = 500,
+        lipschitz_log_predictions: bool = True,
     ) -> None:
         if protected_col not in X.columns:
             raise ValueError(
@@ -192,6 +280,83 @@ class FairnessProblem:
         }
 
         self._K = len(self.model_names)
+
+        # -- Lipschitz (individual fairness) objective setup --
+        self._lipschitz: Optional[LipschitzMetric] = None
+        self._X_numeric: Optional[np.ndarray] = None
+        self._lipschitz_baseline: float = 0.0
+
+        if lipschitz_feature_cols is not None:
+            self._setup_lipschitz(
+                lipschitz_feature_cols=lipschitz_feature_cols,
+                lipschitz_distance_fn=lipschitz_distance_fn,
+                lipschitz_n_pairs=lipschitz_n_pairs,
+                lipschitz_log_predictions=lipschitz_log_predictions,
+            )
+
+        self.n_obj: int = 4 if self._lipschitz is not None else 3
+
+    def _setup_lipschitz(
+        self,
+        lipschitz_feature_cols: List[str],
+        lipschitz_distance_fn: Optional[Callable[[np.ndarray, np.ndarray], float]],
+        lipschitz_n_pairs: int,
+        lipschitz_log_predictions: bool,
+    ) -> None:
+        """
+        Validate Lipschitz parameters, build the numeric feature matrix, and
+        compute the baseline Lipschitz constant at equal mixing weights.
+        """
+        missing = [c for c in lipschitz_feature_cols if c not in self.X.columns]
+        if missing:
+            raise ValueError(
+                f"lipschitz_feature_cols contains columns not found in X: {missing}. "
+                f"Available columns: {self.X.columns}"
+            )
+        if not lipschitz_feature_cols:
+            raise ValueError("lipschitz_feature_cols must not be empty.")
+
+        try:
+            X_numeric = self.X.select(lipschitz_feature_cols).to_numpy().astype(float)
+        except Exception as exc:
+            raise ValueError(
+                f"Could not convert lipschitz_feature_cols to a numeric matrix. "
+                f"Ensure all listed columns are numeric and contain no nulls. "
+                f"Original error: {exc}"
+            ) from exc
+
+        if np.any(~np.isfinite(X_numeric)):
+            raise ValueError(
+                "lipschitz_feature_cols contains NaN or Inf values. "
+                "Please impute or drop affected rows before optimisation."
+            )
+
+        self._X_numeric = X_numeric
+        self._lipschitz = LipschitzMetric(
+            distance_fn=lipschitz_distance_fn,
+            n_pairs=lipschitz_n_pairs,
+            log_predictions=lipschitz_log_predictions,
+            random_seed=42,
+        )
+
+        # Compute the baseline Lipschitz constant at equal mixing weights.
+        # We use this to normalise the objective throughout optimisation.
+        equal_weights = np.ones(self._K) / self._K
+        baseline_preds = self._ensemble_preds(equal_weights)
+
+        if lipschitz_log_predictions and np.any(baseline_preds <= 0):
+            warnings.warn(
+                "Baseline ensemble predictions contain non-positive values. "
+                "Lipschitz objective with log_predictions=True may be unreliable. "
+                "Consider setting lipschitz_log_predictions=False.",
+                UserWarning,
+                stacklevel=3,
+            )
+            # Fall back gracefully: set baseline to 0 so objective is always 0
+            self._lipschitz_baseline = 0.0
+        else:
+            result = self._lipschitz.compute(X_numeric, baseline_preds)
+            self._lipschitz_baseline = result.lipschitz_constant
 
     def _precompute_predictions(self) -> None:
         """
@@ -373,9 +538,44 @@ class FairnessProblem:
 
         return 1.0 - cf_score
 
+    def _lipschitz_objective(self, preds: np.ndarray) -> float:
+        """
+        Return the normalised Lipschitz constant for individual fairness.
+
+        The raw sampled Lipschitz constant is divided by the baseline value
+        (computed once at equal mixing weights). This gives an objective that
+        is 1.0 at the baseline and lower for smoother ensembles.
+
+        If the baseline Lipschitz constant is zero (e.g. all models produce
+        identical predictions), returns 0.0 throughout.
+
+        Parameters
+        ----------
+        preds:
+            Ensemble predictions of shape (n_policies,).
+
+        Returns
+        -------
+        float
+            Normalised Lipschitz constant. Lower is better.
+        """
+        assert self._lipschitz is not None
+        assert self._X_numeric is not None
+
+        if self._lipschitz_baseline <= 0.0:
+            return 0.0
+
+        if self._lipschitz.log_predictions and np.any(preds <= 0):
+            # Cannot compute log-space Lipschitz for non-positive predictions;
+            # treat as maximally unfair (1.0 relative to baseline is conservative).
+            return 1.0
+
+        result = self._lipschitz.compute(self._X_numeric, preds)
+        return result.lipschitz_constant / self._lipschitz_baseline
+
     def evaluate(self, weights: np.ndarray) -> np.ndarray:
         """
-        Evaluate the three objectives for a given weight vector.
+        Evaluate all objectives for a given weight vector.
 
         This is the core function called by NSGA-II during optimisation.
         It is separated from the pymoo ``_evaluate`` method so it can be
@@ -389,7 +589,10 @@ class FairnessProblem:
 
         Returns
         -------
-        Array of shape (3,) with [neg_gini, group_unfairness, cf_unfairness].
+        Array of shape (3,) or (4,) depending on whether the Lipschitz
+        objective is active. Objectives are in the order:
+        [neg_gini, group_unfairness, cf_unfairness] or
+        [neg_gini, group_unfairness, cf_unfairness, lipschitz_unfairness].
         """
         weights = np.asarray(weights, dtype=float)
         if weights.sum() <= 0:
@@ -402,11 +605,18 @@ class FairnessProblem:
         obj2 = self._demographic_parity_objective(preds)
         obj3 = self._counterfactual_objective(preds, cf_preds)
 
+        if self._lipschitz is not None:
+            obj4 = self._lipschitz_objective(preds)
+            return np.array([obj1, obj2, obj3, obj4], dtype=float)
+
         return np.array([obj1, obj2, obj3], dtype=float)
 
     def build_pymoo_problem(self) -> Any:
         """
         Construct and return a pymoo ElementwiseProblem for use with NSGA-II.
+
+        The number of objectives is determined by ``self.n_obj`` (3 or 4,
+        depending on whether ``lipschitz_feature_cols`` was provided).
 
         Returns
         -------
@@ -421,7 +631,7 @@ class FairnessProblem:
             def __init__(self):
                 super().__init__(
                     n_var=parent._K,
-                    n_obj=3,
+                    n_obj=parent.n_obj,
                     n_ieq_constr=0,
                     xl=np.zeros(parent._K),
                     xu=np.ones(parent._K),
@@ -628,6 +838,7 @@ class NSGA2FairnessOptimiser:
     - Accuracy (Gini coefficient of predictions)
     - Group fairness (demographic parity)
     - Counterfactual fairness
+    - Individual fairness via Lipschitz constant (optional, 4th objective)
 
     Parameters
     ----------
@@ -652,10 +863,21 @@ class NSGA2FairnessOptimiser:
         Default 0.05 (~5% premium change).
     cat_features:
         Categorical feature column names for CatBoost Pool construction.
+    lipschitz_feature_cols:
+        List of numeric column names in X to use for individual fairness
+        estimation. Passing this activates the fourth NSGA-II objective.
+        See ``FairnessProblem`` for full documentation.
+    lipschitz_distance_fn:
+        Custom distance function for Lipschitz estimation. Defaults to
+        Euclidean (rarely appropriate — pass a domain-specific function).
+    lipschitz_n_pairs:
+        Number of policy pairs to sample per Lipschitz evaluation. Default 500.
+    lipschitz_log_predictions:
+        Whether to compare predictions in log-space. Default True.
 
     Examples
     --------
-    ::
+    Three-objective mode (default)::
 
         optimiser = NSGA2FairnessOptimiser(
             models={'base': model_a, 'fair': model_b},
@@ -667,6 +889,19 @@ class NSGA2FairnessOptimiser:
         result = optimiser.run(pop_size=50, n_gen=100, seed=42)
         idx = result.selected_point(weights=[0.5, 0.3, 0.2])
         result.plot_front(highlight=idx)
+
+    Four-objective mode (with individual fairness)::
+
+        optimiser = NSGA2FairnessOptimiser(
+            models={'base': model_a, 'fair': model_b},
+            X=X_test,
+            y=y_test,
+            exposure=exposure,
+            protected_col='gender',
+            lipschitz_feature_cols=['age', 'vehicle_value', 'ncd'],
+        )
+        result = optimiser.run(pop_size=50, n_gen=100, seed=42)
+        idx = result.selected_point(weights=[0.4, 0.2, 0.2, 0.2])
     """
 
     def __init__(
@@ -679,6 +914,10 @@ class NSGA2FairnessOptimiser:
         prediction_col: Optional[str] = None,
         cf_tolerance: float = 0.05,
         cat_features: Optional[List[str]] = None,
+        lipschitz_feature_cols: Optional[List[str]] = None,
+        lipschitz_distance_fn: Optional[Callable[[np.ndarray, np.ndarray], float]] = None,
+        lipschitz_n_pairs: int = 500,
+        lipschitz_log_predictions: bool = True,
     ) -> None:
         self.models = models
         self.X = X
@@ -699,6 +938,10 @@ class NSGA2FairnessOptimiser:
             prediction_col=prediction_col,
             cf_tolerance=cf_tolerance,
             cat_features=self.cat_features,
+            lipschitz_feature_cols=lipschitz_feature_cols,
+            lipschitz_distance_fn=lipschitz_distance_fn,
+            lipschitz_n_pairs=lipschitz_n_pairs,
+            lipschitz_log_predictions=lipschitz_log_predictions,
         )
 
     def run(
@@ -747,13 +990,18 @@ class NSGA2FairnessOptimiser:
         )
 
         # Extract Pareto front solutions
-        F = res.F  # Shape: (n_pareto, 3)
+        n_obj = self.problem.n_obj
+        F = res.F  # Shape: (n_pareto, n_obj)
         X_weights = res.X  # Shape: (n_pareto, K) — raw mixing weights
 
         # Normalise weights so they sum to 1
         row_sums = X_weights.sum(axis=1, keepdims=True)
         row_sums = np.where(row_sums <= 0, 1.0, row_sums)
         X_weights_normalised = X_weights / row_sums
+
+        objective_names = ["neg_gini", "group_unfairness", "cf_unfairness"]
+        if n_obj == 4:
+            objective_names.append("lipschitz_unfairness")
 
         return ParetoResult(
             F=F,
@@ -762,7 +1010,7 @@ class NSGA2FairnessOptimiser:
             n_gen=n_gen,
             pop_size=pop_size,
             seed=seed,
-            objective_names=["neg_gini", "group_unfairness", "cf_unfairness"],
+            objective_names=objective_names,
         )
 
 
@@ -784,8 +1032,12 @@ def topsis_select(
     from the negative ideal solution (worst value on each objective).
 
     For insurance pricing, where objectives are on different scales
-    (Gini, parity ratio, counterfactual score), TOPSIS normalises before
-    computing distances so that no single objective dominates through scale.
+    (Gini, parity ratio, counterfactual score, Lipschitz constant),
+    TOPSIS normalises before computing distances so that no single objective
+    dominates through scale.
+
+    Works with any number of objectives (3 for the default mode, 4 for
+    the mode with individual fairness enabled).
 
     Parameters
     ----------
@@ -796,8 +1048,9 @@ def topsis_select(
         Weight vector of shape (n_objectives,). If None, equal weights are
         used. Weights are normalised to sum to 1 internally. Use these to
         express the relative importance of each objective.
-        Example: [0.5, 0.3, 0.2] weights accuracy highest, then group
-        fairness, then counterfactual fairness.
+        Example for 3 objectives: [0.5, 0.3, 0.2] weights accuracy highest,
+        then group fairness, then counterfactual fairness.
+        Example for 4 objectives: [0.4, 0.2, 0.2, 0.2].
 
     Returns
     -------
@@ -872,8 +1125,10 @@ class ParetoResult:
     ----------
     F:
         Objective matrix of shape (n_pareto, n_objectives). Each row is a
-        non-dominated solution. Objectives are [neg_gini, group_unfairness,
-        cf_unfairness], all oriented for minimisation.
+        non-dominated solution. Objectives are oriented for minimisation.
+        Three-objective mode: [neg_gini, group_unfairness, cf_unfairness].
+        Four-objective mode: [neg_gini, group_unfairness, cf_unfairness,
+        lipschitz_unfairness].
     weights:
         Normalised ensemble weight matrix of shape (n_pareto, K). Each row
         gives the mixing weights over the K pre-trained models that produce
@@ -887,7 +1142,9 @@ class ParetoResult:
     seed:
         Random seed used.
     objective_names:
-        Names of the three objectives in order.
+        Names of the objectives in order. Defaults to the three-objective
+        names; automatically extended to four names when the Lipschitz
+        objective is active.
     """
 
     F: np.ndarray
@@ -914,9 +1171,11 @@ class ParetoResult:
         Parameters
         ----------
         weights:
-            Preference weights over the three objectives. Default is equal
-            weights. Pass e.g. [0.5, 0.3, 0.2] to weight accuracy most
-            heavily.
+            Preference weights over the objectives. Default is equal weights.
+            Length must match the number of objectives (3 or 4 depending on
+            whether individual fairness is active).
+            Pass e.g. [0.5, 0.3, 0.2] for three objectives to weight accuracy
+            most heavily, or [0.4, 0.2, 0.2, 0.2] for four objectives.
 
         Returns
         -------
@@ -929,11 +1188,14 @@ class ParetoResult:
     def plot_front(
         self,
         highlight: Optional[int] = None,
-        figsize: Tuple[int, int] = (14, 5),
+        figsize: Optional[Tuple[int, int]] = None,
         title: str = "Pareto Front: Fairness vs Accuracy",
     ) -> Any:
         """
-        Plot the Pareto front as three 2D scatter plots (pairwise objectives).
+        Plot the Pareto front as 2D scatter plots of all pairs of objectives.
+
+        For three objectives, produces three subplots arranged in a single row.
+        For four objectives, produces six subplots arranged in two rows of three.
 
         Requires matplotlib. If not installed, raises ImportError with an
         actionable message.
@@ -944,7 +1206,8 @@ class ParetoResult:
             Index of a solution to highlight (e.g. from selected_point()).
             Shown as a red star marker.
         figsize:
-            Figure size in inches.
+            Figure size in inches. If None, defaults to (14, 5) for three
+            objectives or (18, 10) for four objectives.
         title:
             Figure title.
 
@@ -964,16 +1227,33 @@ class ParetoResult:
             "neg_gini": "Negative Gini (higher = less accurate)",
             "group_unfairness": "Group Unfairness (1 - parity ratio)",
             "cf_unfairness": "Counterfactual Unfairness",
+            "lipschitz_unfairness": "Individual Unfairness (normalised Lipschitz)",
         }
-        labels = [
-            obj_labels.get(n, n) for n in self.objective_names
-        ]
+        labels = [obj_labels.get(n, n) for n in self.objective_names]
+        n_obj = len(self.objective_names)
 
-        pairs = [(0, 1), (0, 2), (1, 2)]
-        fig, axes = plt.subplots(1, 3, figsize=figsize)
-        fig.suptitle(title)
+        # All pairs of objective indices
+        pairs = list(itertools.combinations(range(n_obj), 2))
+        n_pairs = len(pairs)
 
-        for ax, (i, j) in zip(axes, pairs):
+        # Layout: for 3 objectives (3 pairs) use 1 row; for 4 objectives (6 pairs) 2 rows
+        if n_obj <= 3:
+            n_rows, n_cols = 1, n_pairs
+            default_figsize = (14, 5)
+        else:
+            n_cols = 3
+            n_rows = (n_pairs + n_cols - 1) // n_cols
+            default_figsize = (18, 5 * n_rows)
+
+        if figsize is None:
+            figsize = default_figsize
+
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
+        # Flatten axes to a 1-D array for uniform indexing
+        axes_flat = np.array(axes).flatten()
+
+        for ax_idx, (i, j) in enumerate(pairs):
+            ax = axes_flat[ax_idx]
             ax.scatter(self.F[:, i], self.F[:, j], c="steelblue", alpha=0.7, s=30)
             if highlight is not None and 0 <= highlight < self.n_solutions:
                 ax.scatter(
@@ -990,6 +1270,11 @@ class ParetoResult:
             ax.set_ylabel(labels[j])
             ax.set_title(f"{self.objective_names[i]} vs {self.objective_names[j]}")
 
+        # Hide any unused subplots (when n_pairs < n_rows * n_cols)
+        for ax_idx in range(n_pairs, len(axes_flat)):
+            axes_flat[ax_idx].set_visible(False)
+
+        fig.suptitle(title)
         fig.tight_layout()
         return fig
 
