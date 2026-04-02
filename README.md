@@ -338,21 +338,28 @@ from insurance_fairness.diagnostics import ProxyDiscriminationAudit
 
 ## References
 
-Lindholm, Richman, Tsanakas, Wüthrich (2022). Discrimination-Free Insurance Pricing. ASTIN Bulletin 52(1), 55–89.
+**Regulatory instruments**
 
-Lindholm, Richman, Tsanakas, Wüthrich (2026). Sensitivity-Based Measures of Discrimination in Insurance Pricing. European Journal of Operational Research.
+- FCA. (2023). *Consumer Duty: Final rules and guidance* (PS22/9). Financial Conduct Authority. [www.fca.org.uk/publications/policy-statements/ps22-9-new-consumer-duty](https://www.fca.org.uk/publications/policy-statements/ps22-9-new-consumer-duty)
+- FCA. (2023). *Guidance for firms on the fair treatment of vulnerable customers* (FG21/1). Financial Conduct Authority.
+- FCA. (2022). *General insurance pricing practices* (PS21/5). Financial Conduct Authority.
+- FCA. (2023). *Algorithmic pricing* (DP23/3). Financial Conduct Authority.
+- Equality Act 2010, s.19 (indirect discrimination). UK Parliament. [www.legislation.gov.uk/ukpga/2010/15](https://www.legislation.gov.uk/ukpga/2010/15)
 
-Denuit, Michaelides & Trufin (2026). Multicalibration in Insurance Pricing. arXiv:2603.16317.
+**Fairness metrics and methodology**
 
-Zhang, Liu & Shi (2025). Discrimination-Free Insurance Pricing with Privatized Sensitive Attributes. arXiv:2504.11775.
+- Hardt, M., Price, E. & Srebro, N. (2016). "Equality of Opportunity in Supervised Learning." *Advances in Neural Information Processing Systems* 29 (NeurIPS 2016). [arXiv:1610.02413](https://arxiv.org/abs/1610.02413)
+- Chouldechova, A. (2017). "Fair prediction with disparate impact: A study of bias in recidivism prediction instruments." *Big Data*, 5(2), 153–163. [doi:10.1089/big.2016.0047](https://doi.org/10.1089/big.2016.0047)
+- Feldman, M., Friedler, S.A., Moeller, J., Scheidegger, C. & Venkatasubramanian, S. (2015). "Certifying and Removing Disparate Impact." *KDD 2015*. [arXiv:1412.3756](https://arxiv.org/abs/1412.3756)
 
-Côté, O., Côté, M.-P., and Charpentier, A. (2025). A Scalable Toolbox for Exposing Indirect Discrimination in Insurance Rates. CAS Working Paper.
+**Insurance-specific fairness literature**
 
-Huang, F. & Pesenti, S. M. (2025). Marginal Fairness: Fair Decision-Making under Risk Measures. arXiv:2505.18895.
-
-Bian, Z., Wang, L., Shi, C., Qi, Z. (2026). Double Fairness Policy Learning: Integrating Action Fairness and Outcome Fairness in Decision-making. arXiv:2601.19186v2.
-
-Miao, K. E. & Pesenti, S. M. (2026). Discrimination-Insensitive Pricing. arXiv:2603.16720.
+- Lindholm, M., Richman, R., Tsanakas, A. & Wüthrich, M.V. (2022). "Discrimination-Free Insurance Pricing." *ASTIN Bulletin*, 52(1), 55–89. [doi:10.1017/asb.2021.23](https://doi.org/10.1017/asb.2021.23)
+- Lindholm, M., Richman, R., Tsanakas, A. & Wüthrich, M.V. (2026). "Sensitivity-Based Measures of Discrimination in Insurance Pricing." *European Journal of Operational Research*.
+- Denuit, M., Michaelides, M. & Trufin, J. (2026). "Multicalibration in Insurance Pricing." [arXiv:2603.16317](https://arxiv.org/abs/2603.16317)
+- Zhang, Y., Liu, Y. & Shi, P. (2025). "Discrimination-Free Insurance Pricing with Privatized Sensitive Attributes." [arXiv:2504.11775](https://arxiv.org/abs/2504.11775)
+- Côté, O., Côté, M.-P. & Charpentier, A. (2025). "A Scalable Toolbox for Exposing Indirect Discrimination in Insurance Rates." CAS Working Paper.
+- Miao, K.E. & Pesenti, S.M. (2026). "Discrimination-Insensitive Pricing." [arXiv:2603.16720](https://arxiv.org/abs/2603.16720)
 
 ---
 
