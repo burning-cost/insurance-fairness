@@ -285,7 +285,7 @@ premium-level correction misallocates the adjustment. This class corrects
 each intensity separately, then integrates via the Kolmogorov forward
 equations to obtain a fair net premium::
 
-    from insurance_fairness.multi_state import (
+from insurance_fairness.multi_state import (
         MultiStateTransitionFairness,
         MultiStateFairnessReport,
     )
@@ -332,8 +332,12 @@ Bian, Z., Wang, L., Shi, C., Qi, Z. (2026). Double Fairness Policy Learning:
 Integrating Action Fairness and Outcome Fairness in Decision-making.
 arXiv:2601.19186v2.
 
+
 Miao, K. E. & Pesenti, S. M. (2026). Discrimination-Insensitive Pricing.
 arXiv:2603.16720.
+
+Charpentier, A., Denis, C., Elie, R., Hebiri, M. & HU, L. (2026). Fair
+Regression under Localized Demographic Parity Constraints. arXiv:2603.25224.
 """
 
 from insurance_fairness.audit import FairnessAudit, FairnessReport
@@ -377,6 +381,11 @@ from insurance_fairness.intersectional import (
     IntersectionalAuditReport,
     IntersectionalFairnessAudit,
     LambdaCalibrationResult,
+)
+from insurance_fairness.localized_parity import (
+    LocalizedParityAudit,
+    LocalizedParityCorrector,
+    LocalizedParityReport,
 )
 from insurance_fairness.multi_state import (
     KolmogorovPremiumCalculator,
@@ -463,6 +472,10 @@ __all__ = [
     "MultiStateTransitionFairness",
     "PoissonTransitionFitter",
     "TransitionDataBuilder",
+    # Localized demographic parity (v1.2.1)
+    "LocalizedParityAudit",
+    "LocalizedParityCorrector",
+    "LocalizedParityReport",
     # Subpackages (import from subpackage directly)
     "optimal_transport",
     "diagnostics",
