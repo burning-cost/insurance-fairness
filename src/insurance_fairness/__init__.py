@@ -72,6 +72,25 @@ estimated from proxies (Zhang, Liu & Shi, 2025)::
     fair_premium = audit.predict_fair_premium(X_new)
     report = audit.audit_report()
 
+v1.2.0 adds :class:`PrivatizedFairPricer` — sklearn-compatible fit/predict wrapper
+for LDP-protected discrimination-free pricing. Wraps
+:class:`PrivatizedFairnessAudit` in a pricing-pipeline interface with explicit
+NotImplementedError stubs for Laplace/Gaussian mechanisms and equalized_odds
+constraint (pending future extensions)::
+
+    from insurance_fairness import PrivatizedFairPricer
+
+    pricer = PrivatizedFairPricer(
+        epsilon=2.0,
+        n_groups=2,
+        reference_distribution="uniform",
+        base_estimator="poisson_glm",
+    )
+    pricer.fit(X_train, y_train, S_train)
+    premiums = pricer.predict(X_test)
+    print(pricer.excess_risk_bound())   # Theorem 4.3 bound
+    report = pricer.audit_report()     # regulatory evidence pack
+
 v0.4.0 adds per-policyholder proxy vulnerability metrics from Côté et al. (2025):
 
 **insurance_fairness.proxy_vulnerability** — ProxyVulnerabilityScore,
@@ -360,6 +379,7 @@ from insurance_fairness.marginal_fairness import MarginalFairnessPremium, Margin
 from insurance_fairness.multicalibration import BinSufficiencyResult, IsotonicMulticalibrationCorrector, IterativeMulticalibrationCorrector, LocalGLMMulticalibrationCorrector, MulticalibrationAudit, MulticalibrationReport, ProxySufficiencyReport, proxy_sufficiency_test
 from insurance_fairness.privatized_audit import PrivatizedFairnessAudit, PrivatizedAuditResult
 from insurance_fairness.optimal_ldp import LDPEpsilonAdvisor, OptimalLDPMechanism
+from insurance_fairness.privatized_pricer import PrivatizedFairPricer
 from insurance_fairness.proxy_detection import (
     detect_proxies,
     mutual_information_scores,
@@ -446,6 +466,8 @@ __all__ = [
     # Optimal LDP mechanism (v1.1.1)
     "OptimalLDPMechanism",
     "LDPEpsilonAdvisor",
+    # Privatized pricer — sklearn-compatible wrapper (v1.2.0)
+    "PrivatizedFairPricer",
     # Proxy detection
     "detect_proxies",
     "ProxyDetectionResult",
