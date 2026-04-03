@@ -441,11 +441,16 @@ class TestPricingIntegration:
 
     def _make_graph(self):
         from insurance_fairness.optimal_transport.causal import CausalGraph
+        # add_edge requires both nodes to exist; add_outcome first so the edges
+        # can be declared. CausalGraph.validate() requires each protected node
+        # to have a path to the outcome — so we must add those edges explicitly.
         return (
             CausalGraph()
             .add_protected("gender")
             .add_protected("age_band")
             .add_outcome("loss")
+            .add_edge("gender", "loss")
+            .add_edge("age_band", "loss")
         )
 
     def _make_data(self, n=200, seed=0):

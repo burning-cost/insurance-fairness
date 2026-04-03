@@ -60,6 +60,8 @@ dev = [
     "pdoc>=14.0.0",
     # LocalGLMMulticalibrationCorrector uses statsmodels.nonparametric.kernel_regression
     "statsmodels>=0.14.5",
+    # to_markdown() uses tabulate for table formatting
+    "tabulate>=0.9.0",
 ]
 pareto = [
     "pymoo>=0.6.1",
