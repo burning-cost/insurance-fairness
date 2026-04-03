@@ -1,215 +1,109 @@
-"""Run insurance-fairness tests on Databricks (serverless compute).
-
-Usage:
-    /home/ralph/burning-cost/.venv/bin/python run_tests_databricks.py
-"""
-from __future__ import annotations
-
+"""Run insurance-fairness tests on Databricks."""
 import os
-import sys
 import time
 import base64
-import pathlib
 
-# Load credentials
-env_path = pathlib.Path.home() / ".config" / "burning-cost" / "databricks.env"
-for line in env_path.read_text().splitlines():
-    if "=" in line and not line.startswith("#"):
-        k, v = line.split("=", 1)
-        os.environ[k.strip()] = v.strip()
+env_path = os.path.expanduser("~/.config/burning-cost/databricks.env")
+with open(env_path) as f:
+    for line in f:
+        line = line.strip()
+        if line and "=" in line and not line.startswith("#"):
+            k, v = line.split("=", 1)
+            os.environ[k.strip()] = v.strip()
 
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.service import jobs, workspace as ws_svc
+from databricks.sdk.service import jobs, compute
 
 w = WorkspaceClient()
 
-WORKSPACE_BASE = "/Workspace/insurance-fairness-tests"
-REPO_ROOT = pathlib.Path(__file__).parent
-
-# ── upload files ──────────────────────────────────────────────────────────────
-
-def upload_file(local_path: pathlib.Path, remote_path: str) -> None:
-    content = local_path.read_bytes()
-    encoded = base64.b64encode(content).decode()
-    parent = str(pathlib.Path(remote_path).parent)
-    try:
-        w.workspace.mkdirs(parent)
-    except Exception:
-        pass
-    w.workspace.import_(
-        path=remote_path,
-        content=encoded,
-        overwrite=True,
-        format=ws_svc.ImportFormat.AUTO,
-    )
-
-
-def upload_directory(local_dir: pathlib.Path, remote_dir: str) -> None:
-    for p in sorted(local_dir.rglob("*")):
-        if p.is_file() and "__pycache__" not in str(p) and ".pyc" not in p.name:
-            rel = p.relative_to(local_dir)
-            remote = f"{remote_dir}/{rel}"
-            print(f"  {p.relative_to(REPO_ROOT)} -> {remote}")
-            upload_file(p, remote)
-
-
-print("Uploading source files...")
-upload_directory(REPO_ROOT / "src", f"{WORKSPACE_BASE}/src")
-upload_directory(REPO_ROOT / "tests", f"{WORKSPACE_BASE}/tests")
-upload_file(REPO_ROOT / "pyproject.toml", f"{WORKSPACE_BASE}/pyproject.toml")
-print("Files uploaded.")
-
-# ── notebook content ──────────────────────────────────────────────────────────
-
-NOTEBOOK_CONTENT = """\
-# Databricks notebook source
+notebook_content = r'''
 import subprocess, sys
 
-result = subprocess.run(
-    [sys.executable, "-m", "pip", "install", "-e",
-     "/Workspace/insurance-fairness-tests/", "--quiet"],
-    capture_output=True, text=True,
-    cwd="/Workspace/insurance-fairness-tests"
+# Install package from workspace
+r = subprocess.run(
+    [sys.executable, "-m", "pip", "install",
+     "/Workspace/insurance-fairness/",
+     "insurance-fairness[intersectional]",
+     "--quiet", "--no-deps"],
+    capture_output=True, text=True
 )
-if result.stdout:
-    print(result.stdout[-2000:])
-if result.stderr:
-    print(result.stderr[-2000:])
-if result.returncode != 0:
-    raise SystemExit("pip install failed")
-
-# COMMAND ----------
-import subprocess, sys
-
-result = subprocess.run(
-    [
-        sys.executable, "-m", "pytest",
-        "/Workspace/insurance-fairness-tests/tests/",
-        "-v", "--tb=short", "--no-header",
-    ],
-    capture_output=True, text=True,
-    cwd="/Workspace/insurance-fairness-tests"
+# Install deps separately
+r2 = subprocess.run(
+    [sys.executable, "-m", "pip", "install",
+     "dcor", "polars", "scipy", "scikit-learn", "pandas",
+     "numpy", "pytest", "--quiet"],
+    capture_output=True, text=True
 )
-output = result.stdout or ""
-if len(output) > 10000:
-    print(output[:2000])
-    print("... [truncated] ...")
-    print(output[-8000:])
-else:
-    print(output)
-if result.stderr:
-    print(result.stderr[-2000:])
-if result.returncode != 0:
-    raise SystemExit(f"Tests failed with exit code {result.returncode}")
-"""
+print("Install done")
+print(r.stderr[-500:] if r.stderr else "")
+print(r2.stderr[-500:] if r2.stderr else "")
 
-NOTEBOOK_PATH = f"{WORKSPACE_BASE}/run_tests"
+# Run new tests first
+result = subprocess.run(
+    [sys.executable, "-m", "pytest",
+     "/Workspace/insurance-fairness/tests/test_coverage_expansion.py",
+     "-v", "--tb=short", "-q"],
+    capture_output=True, text=True,
+    cwd="/Workspace/insurance-fairness/"
+)
+print("=== NEW TESTS ===")
+print(result.stdout[-6000:])
+print(result.stderr[-1000:])
+print("RC:", result.returncode)
 
-print("Uploading test notebook...")
-encoded_nb = base64.b64encode(NOTEBOOK_CONTENT.encode()).decode()
-try:
-    w.workspace.mkdirs(WORKSPACE_BASE)
-except Exception:
-    pass
+# Run full suite
+result2 = subprocess.run(
+    [sys.executable, "-m", "pytest",
+     "/Workspace/insurance-fairness/tests/",
+     "-x", "-q", "--tb=line"],
+    capture_output=True, text=True,
+    cwd="/Workspace/insurance-fairness/"
+)
+print("=== FULL SUITE ===")
+print(result2.stdout[-8000:])
+print("RC:", result2.returncode)
+'''
+
+notebook_path = "/Workspace/Shared/run-fairness-tests"
 w.workspace.import_(
-    path=NOTEBOOK_PATH,
-    content=encoded_nb,
+    path=notebook_path,
+    format="SOURCE",
+    language="PYTHON",
+    content=base64.b64encode(notebook_content.encode()).decode(),
     overwrite=True,
-    format=ws_svc.ImportFormat.SOURCE,
-    language=ws_svc.Language.PYTHON,
 )
-print(f"Notebook at {NOTEBOOK_PATH}")
+print(f"Notebook at {notebook_path}")
 
-# ── create job and run ────────────────────────────────────────────────────────
-# Serverless pattern: environment_key + JobEnvironment, no new_cluster
+run = w.jobs.submit(
+    run_name="fairness-test-expansion",
+    tasks=[jobs.SubmitTask(
+        task_key="tests",
+        notebook_task=jobs.NotebookTask(notebook_path=notebook_path),
+        new_cluster=compute.ClusterSpec(
+            spark_version="15.4.x-scala2.12",
+            node_type_id="m5d.large",
+            num_workers=0,
+            spark_conf={"spark.master": "local[*, 4]"},
+            data_security_mode=compute.DataSecurityMode.SINGLE_USER,
+        ),
+    )],
+).result()
 
-JOB_NAME = "insurance-fairness-seq-ot-tests"
+print(f"run_id={run.run_id}")
 
-print("Creating job...")
-created = w.jobs.create(
-    name=JOB_NAME,
-    tasks=[
-        jobs.Task(
-            task_key="pytest",
-            notebook_task=jobs.NotebookTask(
-                notebook_path=NOTEBOOK_PATH,
-                source=jobs.Source.WORKSPACE,
-            ),
-            environment_key="default",
-        )
-    ],
-    environments=[
-        jobs.JobEnvironment(
-            environment_key="default",
-            spec=jobs.compute.Environment(
-                client="2",
-                dependencies=[
-                    "catboost",
-                    "pymoo>=0.6.1",
-                    "polars",
-                    "scikit-learn",
-                    "scipy",
-                    "jinja2",
-                    "pyarrow",
-                    "pytest",
-                    "networkx",
-                ],
-            ),
-        )
-    ],
-)
-job_id = created.job_id
-print(f"Job ID: {job_id}")
-
-print("Running job...")
-run_resp = w.jobs.run_now(job_id=job_id)
-run_id = run_resp.run_id
-print(f"Run ID: {run_id}")
-print(f"Tracking: {os.environ['DATABRICKS_HOST']}#job/{job_id}/run/{run_id}")
-
-# ── poll until done ───────────────────────────────────────────────────────────
-
-print("Waiting for run to complete...")
-while True:
-    run_state = w.jobs.get_run(run_id=run_id)
-    life_cycle = run_state.state.life_cycle_state
-    print(f"  state: {life_cycle}")
-    if life_cycle in (
-        jobs.RunLifeCycleState.TERMINATED,
-        jobs.RunLifeCycleState.SKIPPED,
-        jobs.RunLifeCycleState.INTERNAL_ERROR,
-    ):
+for _ in range(60):
+    rs = w.jobs.get_run(run_id=run.run_id)
+    life = rs.state.life_cycle_state if rs.state else None
+    print(f"  {life}")
+    if life and life.value in ("TERMINATED", "SKIPPED", "INTERNAL_ERROR"):
         break
-    time.sleep(20)
+    time.sleep(15)
 
-result_state = run_state.state.result_state
-print(f"Final result: {result_state}")
-
-# Print task output
-for task in (run_state.tasks or []):
-    try:
-        output = w.jobs.get_run_output(run_id=task.run_id)
-        if output.notebook_output:
-            print("\n--- Notebook Output ---")
-            print(output.notebook_output.result)
-        if output.error:
-            print(f"\n--- Error ---\n{output.error}")
-        if output.error_trace:
-            trace = output.error_trace
-            print(f"\n--- Trace (last 5000 chars) ---\n{trace[-5000:]}")
-    except Exception as e:
-        print(f"Could not fetch output: {e}")
-
-# Clean up job
 try:
-    w.jobs.delete(job_id=job_id)
-    print(f"Deleted job {job_id}")
-except Exception:
-    pass
-
-if result_state == jobs.RunResultState.SUCCESS:
-    print("\nAll tests passed.")
-    sys.exit(0)
-else:
-    print("\nTests FAILED.")
-    sys.exit(1)
+    out = w.jobs.get_run_output(run_id=run.run_id)
+    if out.notebook_output:
+        print(out.notebook_output.result)
+    if out.error:
+        print("ERR:", out.error)
+except Exception as e:
+    print(f"output error: {e}")
