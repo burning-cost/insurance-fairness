@@ -24,7 +24,7 @@ This is a compliance audit tool, not a methodology library. It produces document
 
 ---
 
-## Part of the Burning Cost stack
+## Part of the Burning Cost toolkit
 
 Takes a fitted pricing model and a dataset with protected characteristics. Feeds audit reports and proxy detection results into [insurance-governance](https://github.com/burning-cost/insurance-governance) for pricing committee sign-off packs and FCA Consumer Duty documentation. → [See the full stack](https://burning-cost.github.io/stack/)
 
@@ -367,11 +367,15 @@ from insurance_fairness.diagnostics import ProxyDiscriminationAudit
 
 | Library | What it does |
 |---------|-------------|
-| [insurance-causal](https://github.com/burning-cost/insurance-causal) | Double Machine Learning for causal treatment effects — establishes whether a factor genuinely drives risk or proxies a protected characteristic |
+| [insurance-causal-policy](https://github.com/burning-cost/insurance-causal-policy) | SDID and Doubly Robust Synthetic Controls — establishes whether a rate change caused an outcome shift, not just correlated with one |
 | [insurance-governance](https://github.com/burning-cost/insurance-governance) | Pricing committee sign-off packs and FCA Consumer Duty documentation |
 | [insurance-monitoring](https://github.com/burning-cost/insurance-monitoring) | Post-bind drift detection — flags when protected-group A/E ratios are shifting in the live book |
 | [insurance-optimise](https://github.com/burning-cost/insurance-optimise) | Constrained rate change optimisation with FCA PS21/5 compliance |
 
 ---
+
+Part of the [Burning Cost](https://burning-cost.github.io) open-source insurance analytics toolkit. → [See all libraries](https://burning-cost.github.io/stack/)
+
+> Questions or feedback? Start a [Discussion](https://github.com/burning-cost/insurance-fairness/discussions). Found it useful? A [GitHub star](https://github.com/burning-cost/insurance-fairness) helps others find it.
 
 **Need help implementing this in production?** [Talk to us](https://burning-cost.github.io/work-with-us/).
