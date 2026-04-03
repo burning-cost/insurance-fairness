@@ -1203,10 +1203,13 @@ def _pareto_indices(objectives_1: np.ndarray, objectives_2: np.ndarray) -> np.nd
     for i in range(n):
         if not is_pareto[i]:
             continue
+        # Find points that i DOMINATES: i is at least as good on both objectives
+        # and strictly better on at least one. These points (j) are the ones
+        # to remove — NOT points that are better than i.
         dominated = (
-            (objectives_1 <= objectives_1[i]) &
-            (objectives_2 <= objectives_2[i]) &
-            ((objectives_1 < objectives_1[i]) | (objectives_2 < objectives_2[i]))
+            (objectives_1[i] <= objectives_1) &
+            (objectives_2[i] <= objectives_2) &
+            ((objectives_1[i] < objectives_1) | (objectives_2[i] < objectives_2))
         )
         dominated[i] = False
         is_pareto[dominated] = False
