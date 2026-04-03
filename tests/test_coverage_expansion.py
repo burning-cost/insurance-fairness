@@ -303,14 +303,14 @@ class TestIntersectionalAuditEdgeCases:
         y_hat, D = self._make_data(n=200)
         audit = IntersectionalFairnessAudit(protected_attrs=["gender", "age_band"])
         report = audit.audit(y_hat, D)
-        reconstructed = sum(report.marginal_dcovs.values()) + report.eta
+        reconstructed = sum(report.marginal_dcov.values()) + report.eta
         assert reconstructed == pytest.approx(report.ccDcov, rel=1e-5)
 
     def test_audit_report_subgroup_stats_has_correct_columns(self):
         y_hat, D = self._make_data()
         audit = IntersectionalFairnessAudit(protected_attrs=["gender", "age_band"])
         report = audit.audit(y_hat, D)
-        required_cols = {"group", "n", "mean_prediction"}
+        required_cols = {"subgroup", "n", "mean_prediction"}
         assert required_cols.issubset(set(report.subgroup_statistics.columns))
 
     def test_regulariser_lambda_zero_returns_zero(self):
