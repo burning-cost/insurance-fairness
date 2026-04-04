@@ -379,3 +379,11 @@ Part of the [Burning Cost](https://burning-cost.github.io) open-source insurance
 > Questions or feedback? Start a [Discussion](https://github.com/burning-cost/insurance-fairness/discussions). Found it useful? A [GitHub star](https://github.com/burning-cost/insurance-fairness) helps others find it.
 
 **Need help implementing this in production?** [Talk to us](https://burning-cost.github.io/work-with-us/).
+
+## Related Libraries
+
+| Library | Description |
+|---------|-------------|
+| [`insurance-governance`](https://github.com/burning-cost/insurance-governance) | Model governance and validation reports — document your fairness audit in a PRA-compliant validation framework |
+| [`insurance-causal`](https://github.com/burning-cost/insurance-causal) | DML causal inference — isolate genuine causal price effects from proxy correlation before auditing for discrimination |
+| [`insurance-monitoring`](https://github.com/burning-cost/insurance-monitoring) | Monitor fairness metrics post-deployment — PSI and A/E ratios on protected characteristic proxies |
