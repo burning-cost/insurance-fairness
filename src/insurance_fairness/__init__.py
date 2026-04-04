@@ -414,6 +414,10 @@ from insurance_fairness.multi_state import (
     PoissonTransitionFitter,
     TransitionDataBuilder,
 )
+from insurance_fairness.tail_dp import (
+    TailDemographicParityCorrector,
+    TailDPReport,
+)
 
 # Subpackages: import for side-effects / discoverability
 from insurance_fairness import optimal_transport  # noqa: F401
@@ -498,6 +502,9 @@ __all__ = [
     "LocalizedParityAudit",
     "LocalizedParityCorrector",
     "LocalizedParityReport",
+    # Tail demographic parity (v1.2.1)
+    "TailDemographicParityCorrector",
+    "TailDPReport",
     # Subpackages (import from subpackage directly)
     "optimal_transport",
     "diagnostics",
