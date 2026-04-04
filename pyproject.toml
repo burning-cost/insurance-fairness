@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "insurance-fairness"
-version = "1.2.1"
-description = "Proxy discrimination auditing, discrimination-free pricing, and diagnostics for UK insurance pricing models. Implements FCA Consumer Duty and Equality Act 2010 compliance checks."
+version = "1.2.2"
+description = "Proxy discrimination auditing, discrimination-free pricing, and fairness diagnostics for UK insurance pricing models under FCA Consumer Duty and Equality Act 2010."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -14,21 +14,32 @@ keywords = [
     "insurance",
     "fairness",
     "proxy discrimination",
+    "discrimination-free pricing",
     "FCA",
+    "Consumer Duty",
     "actuarial",
     "pricing",
+    "UK",
+    "personal lines",
+    "Equality Act",
+    "protected characteristics",
+    "disparate impact",
+    "demographic parity",
+    "multicalibration",
+    "bias",
+    "bias detection",
+    "causal fairness",
     "pareto",
     "nsga2",
     "multi-objective",
     "optimal-transport",
-    "discrimination-free",
-    "causal",
     "shapley",
     "double fairness",
-    "consumer duty",
-    "tchebycheff",
     "intersectional",
     "distance covariance",
+    "EP25/2",
+    "PS22/9",
+    "fair value",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -38,6 +49,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Mathematics",
     "Topic :: Scientific/Engineering :: Information Analysis",
     "Topic :: Office/Business :: Financial",
     "License :: OSI Approved :: MIT License",
@@ -79,11 +91,11 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://burning-cost.github.io/"
+Homepage = "https://burning-cost.github.io/libraries/insurance-fairness/"
+Documentation = "https://burning-cost.github.io/libraries/insurance-fairness/"
 Repository = "https://github.com/burning-cost/insurance-fairness"
-Changelog = "https://github.com/burning-cost/insurance-fairness/releases"
-Documentation = "https://burning-cost.github.io/insurance-fairness"
 "Bug Tracker" = "https://github.com/burning-cost/insurance-fairness/issues"
+Changelog = "https://github.com/burning-cost/insurance-fairness/releases"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/insurance_fairness"]
