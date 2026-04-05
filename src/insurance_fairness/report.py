@@ -174,7 +174,7 @@ is a permitted direct rating factor.
 - FCA Consumer Duty Finalised Guidance FG22/5 (2023).
 - FCA Multi-Firm Review: Outcomes Monitoring under Consumer Duty (2024).
 - FCA Multi-Firm Review of Consumer Duty Implementation (2024).
-- FCA Evaluation Paper EP25/2 (2025).
+- FCA Research Note: Motor insurance pricing and local area ethnicity in England and Wales (December 2025).
 - Equality Act 2010, Section 19.
 """
 

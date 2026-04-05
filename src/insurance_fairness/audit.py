@@ -57,7 +57,7 @@ References
 FCA Consumer Duty Finalised Guidance FG22/5 (2023).
 FCA Multi-Firm Review of Outcomes Monitoring under the Consumer Duty (2024).
 FCA Multi-Firm Review of Consumer Duty Implementation (2024).
-FCA Evaluation Paper EP25/2 (2025).
+FCA Research Note: Motor insurance pricing and local area ethnicity in England and Wales (December 2025).
 """
 
 from __future__ import annotations

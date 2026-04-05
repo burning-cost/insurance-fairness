@@ -27,9 +27,9 @@ This is directly applicable to UK insurance under FCA Consumer Duty because:
 
 - Consumer Duty Outcome 4 (Price and Value) requires that products deliver
   fair value to *all* customer segments, not just on average.
-- FCA EP25/2 highlights proxy discrimination risk at the high-premium end of
-  motor and home portfolios, where vulnerable customer characteristics
-  (deprivation, disability proxies) cluster.
+- The FCA's December 2025 Research Note on motor insurance pricing and local
+  area ethnicity highlights residual pricing differentials at the postcode level
+  that may cluster with vulnerable customer characteristics.
 - Correction only in the tail means minimal disturbance to the bulk of pricing
   relativities — pricing teams can defend the correction to reserving and
   underwriting.

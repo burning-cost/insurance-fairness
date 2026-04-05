@@ -23,7 +23,7 @@
 # MAGIC premium disparity, and produces a markdown audit report suitable for the pricing committee.
 # MAGIC
 # MAGIC **Regulatory context:**
-# MAGIC - FCA Evaluation Paper EP25/2 (2025)
+# MAGIC - FCA Research Note: Motor insurance pricing and local area ethnicity (December 2025)
 # MAGIC - FCA Consumer Duty Finalised Guidance FG22/5 (2023)
 # MAGIC - Equality Act 2010, Section 19 (Indirect Discrimination)
 # MAGIC
